@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 const NAV = [
   { to: "/", label: "Today", icon: Home },
   { to: "/leaderboard", label: "Ranks", icon: Trophy },
+  { to: "/profile", label: "Profile", icon: User },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -74,16 +75,22 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="text-sm font-bold tracking-[0.24em]">IRONLINE</div>
           </div>
-          <div className="grid h-9 w-9 place-items-center rounded-full bg-surface text-xs font-bold">
-            <User className="h-4 w-4 text-muted-foreground" />
-          </div>
+          <Link
+            to="/profile"
+            aria-label="Open profile"
+            className={`grid h-9 w-9 place-items-center rounded-full bg-surface text-xs font-bold transition-colors ${
+              pathname.startsWith("/profile") ? "ring-1 ring-inset ring-primary/50 text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <User className="h-4 w-4" />
+          </Link>
         </header>
 
         <main className="w-full flex-1 pt-16 pb-28 lg:pt-0 lg:pb-0">{children}</main>
 
         {/* Mobile bottom nav */}
         <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-background/90 px-4 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden">
-          <div className="mx-auto grid max-w-md grid-cols-2 gap-2">
+          <div className="mx-auto grid max-w-md grid-cols-3 gap-2">
             {NAV.map(({ to, label, icon: Icon }) => {
               const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
               return (
