@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Award, Calendar, Dumbbell, Flame, Shield, Snowflake, Target, Trophy, Zap } from "lucide-react";
-import { CURRENT_USER_ID, useGymStore } from "@/lib/gym-data";
+import { Award, Beef, Calendar, Droplets, Flame, Scale, Shield, Snowflake, Target, Trophy, Zap } from "lucide-react";
+import { initialsFor, useMyProfile, useMyStats } from "@/lib/gym-data";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -14,8 +14,6 @@ export const Route = createFileRoute("/profile")({
   component: Profile,
 });
 
-const JOIN_DATE = new Date("2025-11-08");
-
 const BADGES = [
   { id: "b1", label: "7-Day Streak Warrior", icon: Flame, earned: true, desc: "Logged 7 days straight" },
   { id: "b2", label: "Shield Bearer", icon: Shield, earned: true, desc: "Held an active Freeze" },
@@ -26,9 +24,29 @@ const BADGES = [
 ];
 
 function Profile() {
-  const store = useGymStore();
-  const me = store.users.find((u) => u.id === CURRENT_USER_ID)!;
-  const joined = JOIN_DATE.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+  const { data: profile } = useMyProfile();
+  const { data: stats } = useMyStats();
+  const displayName = profile?.full_name?.trim() || "Athlete";
+  const initials = initialsFor(displayName);
+  const joined = profile
+    ? new Date(profile.created_at).toLocaleDateString(undefined, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "—";
+  const streak = stats?.current_streak ?? 0;
+  const points = stats?.total_points ?? 0;
+  const hasFreeze = !!stats?.has_freeze;
+
+  // Dynamic badges from live stats
+  const dynamicBadges = BADGES.map((b) => {
+    if (b.id === "b1") return { ...b, earned: streak >= 7 };
+    if (b.id === "b2") return { ...b, earned: hasFreeze };
+    if (b.id === "b3") return { ...b, earned: streak >= 20 };
+    if (b.id === "b5") return { ...b, earned: streak >= 100 };
+    return b;
+  });
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4 pb-10 lg:px-10 lg:pt-10">
@@ -48,11 +66,13 @@ function Profile() {
         />
         <div className="flex items-center gap-4">
           <div className="grid h-16 w-16 place-items-center rounded-2xl bg-surface-2 text-lg font-bold ring-1 ring-inset ring-primary/40 shadow-[var(--shadow-red)]">
-            {me.initials}
+            {initials}
           </div>
           <div className="min-w-0">
-            <div className="text-xl font-semibold tracking-tight">{me.name}</div>
-            <div className="text-xs text-muted-foreground">{me.handle}</div>
+            <div className="text-xl font-semibold tracking-tight">{displayName}</div>
+            <div className="text-xs text-muted-foreground capitalize">
+              {profile?.role ?? "client"}
+            </div>
             <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
               <Calendar className="h-3.5 w-3.5 text-primary" />
               Joined {joined}
@@ -61,9 +81,9 @@ function Profile() {
         </div>
 
         <div className="mt-6 grid grid-cols-3 gap-3">
-          <Stat icon={Flame} label="Streak" value={`${me.streak}d`} accent />
-          <Stat icon={Trophy} label="Points" value={me.points.toLocaleString()} />
-          <Stat icon={Shield} label="Shield" value={me.hasFreeze ? "Active" : "None"} />
+          <Stat icon={Flame} label="Streak" value={`${streak}d`} accent />
+          <Stat icon={Trophy} label="Points" value={points.toLocaleString()} />
+          <Stat icon={Shield} label="Shield" value={hasFreeze ? "Active" : "None"} />
         </div>
       </section>
 
@@ -72,11 +92,11 @@ function Profile() {
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold tracking-tight">Badges</h2>
           <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-            {BADGES.filter((b) => b.earned).length} / {BADGES.length}
+            {dynamicBadges.filter((b) => b.earned).length} / {dynamicBadges.length}
           </span>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {BADGES.map((b) => {
+          {dynamicBadges.map((b) => {
             const Icon = b.icon;
             return (
               <div
@@ -107,17 +127,20 @@ function Profile() {
         </div>
       </section>
 
-      {/* Metrics placeholder */}
+      {/* Personal metrics — from onboarding */}
       <section className="animate-rise mt-6">
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold tracking-tight">Personal metrics</h2>
-          <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Coming soon</span>
+          <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            From onboarding
+          </span>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <MetricPlaceholder icon={Dumbbell} label="Bench · 1RM" />
-          <MetricPlaceholder icon={Dumbbell} label="Squat · 1RM" />
-          <MetricPlaceholder icon={Target} label="Body fat %" />
-          <MetricPlaceholder icon={Zap} label="VO₂ max" />
+          <MetricRow icon={Scale} label="Current weight" value={profile?.current_weight_kg} unit="kg" />
+          <MetricRow icon={Flame} label="Calorie target" value={profile?.calorie_target_kcal} unit="kcal" />
+          <MetricRow icon={Beef} label="Protein target" value={profile?.protein_target_g} unit="g" />
+          <MetricRow icon={Droplets} label="Water target" value={profile?.water_target_l} unit="L" />
+          <MetricRow icon={Target} label="Role" text={profile?.role ?? "client"} />
         </div>
       </section>
     </div>
@@ -148,23 +171,36 @@ function Stat({
   );
 }
 
-function MetricPlaceholder({
+function MetricRow({
   icon: Icon,
   label,
+  value,
+  unit,
+  text,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
+  value?: number | null;
+  unit?: string;
+  text?: string;
 }) {
+  const display =
+    text != null
+      ? text
+      : value != null
+        ? `${value}${unit ? ` ${unit}` : ""}`
+        : "—";
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-dashed border-hairline bg-surface/40 p-4">
-      <div className="grid h-10 w-10 place-items-center rounded-lg bg-surface-2 text-muted-foreground">
+    <div className="flex items-center gap-3 rounded-xl border border-hairline bg-surface/60 p-4">
+      <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary/15 text-primary">
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold">{label}</div>
-        <div className="text-[11px] text-muted-foreground">Tap to log — coming soon</div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          {label}
+        </div>
+        <div className="text-lg font-extrabold tracking-tight capitalize">{display}</div>
       </div>
-      <div className="text-lg font-bold tracking-tight text-muted-foreground">—</div>
     </div>
   );
 }

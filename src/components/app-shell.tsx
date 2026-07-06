@@ -1,6 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Flame, Home, Trophy, User } from "lucide-react";
+import { Flame, Home, LogOut, Trophy, User } from "lucide-react";
 import type { ReactNode } from "react";
+import { AuthGate } from "./auth-gate";
+import { Toaster } from "@/components/ui/sonner";
+import { initialsFor, signOut, useMyProfile } from "@/lib/gym-data";
 
 const NAV = [
   { to: "/", label: "Today", icon: Home },
@@ -10,6 +13,9 @@ const NAV = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { data: profile } = useMyProfile();
+  const displayName = profile?.full_name?.trim() || "Athlete";
+  const initials = initialsFor(displayName);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -57,12 +63,21 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mt-auto border-t border-hairline p-4">
             <div className="flex items-center gap-3 rounded-xl bg-surface p-3">
               <div className="grid h-9 w-9 place-items-center rounded-full bg-surface-2 text-xs font-bold text-foreground">
-                YO
+                {initials}
               </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">You</div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">{displayName}</div>
                 <div className="text-[11px] text-muted-foreground">Rank · climbing</div>
               </div>
+              {profile && (
+                <button
+                  onClick={() => signOut()}
+                  aria-label="Sign out"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-surface-2 hover:text-primary"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
         </aside>
@@ -86,7 +101,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
         </header>
 
-        <main className="w-full flex-1 pt-16 pb-28 lg:pt-0 lg:pb-0">{children}</main>
+        <main className="w-full flex-1 pt-16 pb-28 lg:pt-0 lg:pb-0">
+          <AuthGate>{children}</AuthGate>
+          <Toaster position="top-center" theme="dark" />
+        </main>
 
         {/* Mobile bottom nav */}
         <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-background/90 px-4 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden">
