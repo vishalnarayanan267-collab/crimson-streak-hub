@@ -4,52 +4,69 @@ import { Beef, Check, Droplets, Flame, Minus, Plus, Shield, Snowflake, Zap } fro
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  CURRENT_USER_ID,
-  EXERCISES,
-  commitDailyLog,
-  toggleExercise,
-  updateLog,
-  useGymStore,
+  useCommitDailyLog,
+  useMyProfile,
+  useMyStats,
+  useToggleWorkout,
+  useTodayWorkouts,
+  type Workout,
 } from "@/lib/gym-data";
 import { toast } from "sonner";
-import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
 function Dashboard() {
-  const store = useGymStore();
-  const me = store.users.find((u) => u.id === CURRENT_USER_ID)!;
-  const { log } = store;
+  const { data: profile } = useMyProfile();
+  const { data: stats } = useMyStats();
+  const { data: workouts = [] } = useTodayWorkouts();
+  const toggleWorkout = useToggleWorkout();
+  const commitLog = useCommitDailyLog();
+
+  const proteinTarget = profile?.protein_target_g ?? 150;
+  const calorieTarget = profile?.calorie_target_kcal ?? 2600;
+  const waterTarget = profile?.water_target_l ?? 3;
+
+  // Daily intake stays as local session state — spec's schema doesn't include a daily-log table.
+  const [protein, setProtein] = useState(0);
+  const [calories, setCalories] = useState(0);
+  const [water, setWater] = useState(0);
 
   const completed = useMemo(
-    () => EXERCISES.filter((e) => log.exercises[e.id]).length,
-    [log.exercises],
+    () => workouts.filter((w: Workout) => w.is_completed).length,
+    [workouts],
   );
+  const total = Math.max(1, workouts.length);
   const completion = Math.round(
-    ((log.protein > 0 ? 1 : 0) +
-      (log.calories > 0 ? 1 : 0) +
-      (log.water > 0 ? 1 : 0) +
-      completed / EXERCISES.length) *
+    ((protein > 0 ? 1 : 0) +
+      (calories > 0 ? 1 : 0) +
+      (water > 0 ? 1 : 0) +
+      completed / total) *
       25,
   );
 
-  const commit = () => {
-    commitDailyLog(CURRENT_USER_ID);
-    toast("Day logged. Streak +1 · Points +40", {
-      description: "Consistency compounds. See you tomorrow.",
-    });
+  const commit = async () => {
+    try {
+      await commitLog.mutateAsync();
+      toast("Day logged. Streak +1 · Points +40", {
+        description: "Consistency compounds. See you tomorrow.",
+      });
+    } catch (e: any) {
+      toast("Couldn't save log", { description: e.message ?? "Try again." });
+    }
   };
+
+  const streak = stats?.current_streak ?? 0;
+  const points = stats?.total_points ?? 0;
+  const hasFreeze = !!stats?.has_freeze;
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4 lg:px-10 lg:pt-10">
-      <Toaster position="top-center" theme="dark" />
-
       {/* Greeting */}
       <div className="animate-rise">
         <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
-          Thursday · Log Day
+          {new Date().toLocaleDateString(undefined, { weekday: "long" })} · Log Day
         </div>
         <h1 className="mt-1 text-3xl font-bold leading-tight tracking-tight text-balance sm:text-4xl">
           Show up. Log it. <span className="text-primary">Own the day.</span>
@@ -71,7 +88,7 @@ function Dashboard() {
             </div>
             <div className="mt-2 flex items-baseline gap-3">
               <span className="text-6xl font-extrabold tracking-tighter tabular-nums text-foreground">
-                {me.streak}
+                {streak}
               </span>
               <span className="text-lg font-semibold text-muted-foreground">days</span>
               <span className="ml-1 text-3xl leading-none animate-pop-in" aria-hidden>
@@ -79,12 +96,12 @@ function Dashboard() {
               </span>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Badge tone={me.hasFreeze ? "shield" : "muted"}>
+              <Badge tone={hasFreeze ? "shield" : "muted"}>
                 <Shield className="h-3 w-3" />
-                {me.hasFreeze ? "Streak Shield Active" : "No shield"}
+                {hasFreeze ? "Streak Shield Active" : "No shield"}
               </Badge>
               <Badge tone="accent">
-                <Zap className="h-3 w-3" /> {me.points.toLocaleString()} pts
+                <Zap className="h-3 w-3" /> {points.toLocaleString()} pts
               </Badge>
             </div>
           </div>
@@ -102,90 +119,96 @@ function Dashboard() {
         <MetricCard
           icon={<Beef className="h-4 w-4" />}
           label="Protein"
-          value={`${log.protein}`}
-          unit="g"
+          value={`${protein}`}
+          unit={`g / ${proteinTarget}g`}
           accent
         >
           <Slider
-            value={[log.protein]}
+            value={[protein]}
             min={0}
-            max={300}
+            max={Math.max(300, proteinTarget + 50)}
             step={5}
-            onValueChange={([v]) => updateLog({ protein: v })}
+            onValueChange={([v]) => setProtein(v!)}
             className="mt-4"
           />
-          <TicksRow marks={["0", "75", "150", "225", "300"]} />
+          <TicksRow marks={["0", `${Math.round(proteinTarget / 2)}`, `${proteinTarget}`, `${proteinTarget + 50}`]} />
         </MetricCard>
 
         <MetricCard
           icon={<Flame className="h-4 w-4" />}
           label="Calories"
-          value={log.calories.toLocaleString()}
-          unit="kcal"
+          value={calories.toLocaleString()}
+          unit={`kcal / ${calorieTarget.toLocaleString()}`}
         >
           <div className="mt-4 flex items-center gap-3">
-            <StepButton onClick={() => updateLog({ calories: Math.max(0, log.calories - 100) })}>
+            <StepButton onClick={() => setCalories(Math.max(0, calories - 100))}>
               <Minus className="h-4 w-4" />
             </StepButton>
             <div className="flex-1 overflow-hidden rounded-full bg-surface-2">
               <div
                 className="h-2 rounded-full bg-gradient-to-r from-primary to-primary/70 transition-all duration-500"
-                style={{ width: `${Math.min(100, (log.calories / 3500) * 100)}%` }}
+                style={{ width: `${Math.min(100, (calories / (calorieTarget * 1.35)) * 100)}%` }}
               />
             </div>
-            <StepButton onClick={() => updateLog({ calories: log.calories + 100 })}>
+            <StepButton onClick={() => setCalories(calories + 100)}>
               <Plus className="h-4 w-4" />
             </StepButton>
           </div>
           <div className="mt-2 flex justify-between text-[11px] uppercase tracking-widest text-muted-foreground">
-            <span>Target 2,600</span>
-            <span>Ceiling 3,500</span>
+            <span>Target {calorieTarget.toLocaleString()}</span>
+            <span>Ceiling {Math.round(calorieTarget * 1.35).toLocaleString()}</span>
           </div>
         </MetricCard>
 
         <MetricCard
           icon={<Droplets className="h-4 w-4" />}
           label="Water"
-          value={log.water.toFixed(2)}
-          unit="L"
+          value={water.toFixed(2)}
+          unit={`L / ${waterTarget}L`}
         >
-          <WaterTracker value={log.water} onChange={(v) => updateLog({ water: v })} />
+          <WaterTracker value={water} onChange={setWater} target={waterTarget} />
         </MetricCard>
 
         <MetricCard
           icon={<Check className="h-4 w-4" />}
           label="Session"
-          value={`${completed}/${EXERCISES.length}`}
+          value={`${completed}/${workouts.length}`}
           unit="done"
         >
-          <ul className="mt-3 divide-y divide-hairline">
-            {EXERCISES.map((ex) => {
-              const done = !!log.exercises[ex.id];
-              return (
-                <li key={ex.id}>
-                  <label className="group flex cursor-pointer items-center gap-3 py-3">
-                    <Checkbox
-                      checked={done}
-                      onCheckedChange={() => toggleExercise(ex.id)}
-                      className="h-5 w-5 rounded-md border-hairline data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
-                    />
-                    <span
-                      className={`text-sm font-medium transition-all ${
-                        done ? "text-muted-foreground line-through" : "text-foreground"
-                      }`}
-                    >
-                      {ex.label}
-                    </span>
-                    {done && (
-                      <span className="ml-auto inline-flex animate-pop-in items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
-                        Done
+          {workouts.length === 0 ? (
+            <div className="mt-3 text-sm text-muted-foreground">No exercises assigned today.</div>
+          ) : (
+            <ul className="mt-3 divide-y divide-hairline">
+              {workouts.map((ex: Workout) => {
+                const done = ex.is_completed;
+                return (
+                  <li key={ex.id}>
+                    <label className="group flex cursor-pointer items-center gap-3 py-3">
+                      <Checkbox
+                        checked={done}
+                        onCheckedChange={() =>
+                          toggleWorkout.mutate({ id: ex.id, is_completed: !done })
+                        }
+                        className="h-5 w-5 rounded-md border-hairline data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+                      />
+                      <span
+                        className={`text-sm font-medium transition-all ${
+                          done ? "text-muted-foreground line-through" : "text-foreground"
+                        }`}
+                      >
+                        {ex.exercise_name}
                       </span>
-                    )}
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
+                      {done && (
+                        <span className="ml-auto inline-flex animate-pop-in items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+                          Done
+                        </span>
+                      )}
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </MetricCard>
       </div>
 
@@ -193,9 +216,10 @@ function Dashboard() {
       <div className="mt-5 mb-6">
         <button
           onClick={commit}
-          className="group relative w-full overflow-hidden rounded-2xl bg-primary py-4 text-base font-bold uppercase tracking-[0.18em] text-primary-foreground shadow-[var(--shadow-red)] transition-transform active:scale-[0.98]"
+          disabled={commitLog.isPending}
+          className="group relative w-full overflow-hidden rounded-2xl bg-primary py-4 text-base font-bold uppercase tracking-[0.18em] text-primary-foreground shadow-[var(--shadow-red)] transition-transform active:scale-[0.98] disabled:opacity-60"
         >
-          <span className="relative z-10">Commit Today's Log</span>
+          <span className="relative z-10">{commitLog.isPending ? "Saving…" : "Commit Today's Log"}</span>
           <span
             aria-hidden
             className="absolute inset-0 -translate-x-full bg-gradient-to-r from-white/0 via-white/25 to-white/0 transition-transform duration-700 group-hover:translate-x-full"
@@ -317,9 +341,19 @@ function RingProgress({ value }: { value: number }) {
   );
 }
 
-function WaterTracker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const total = 8; // 8 x 0.25L cups = 2L display, but we allow more
-  const filled = Math.min(total, Math.round(value / 0.25));
+function WaterTracker({
+  value,
+  onChange,
+  target,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  target: number;
+}) {
+  const cups = Math.max(8, Math.round(target / 0.25));
+  const total = Math.min(12, cups);
+  const step = target / total;
+  const filled = Math.min(total, Math.round(value / step));
   const [pulseIdx, setPulseIdx] = useState<number | null>(null);
   return (
     <div className="mt-4">
@@ -330,8 +364,8 @@ function WaterTracker({ value, onChange }: { value: number; onChange: (v: number
             <button
               key={i}
               onClick={() => {
-                const target = (i + 1) * 0.25;
-                onChange(value === target ? i * 0.25 : target);
+                const t = (i + 1) * step;
+                onChange(value === t ? i * step : Math.round(t * 100) / 100);
                 setPulseIdx(i);
                 setTimeout(() => setPulseIdx(null), 500);
               }}
@@ -355,7 +389,7 @@ function WaterTracker({ value, onChange }: { value: number; onChange: (v: number
         })}
       </div>
       <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-widest text-muted-foreground">
-        <span>0.25L per cup</span>
+        <span>{step.toFixed(2)}L per cup</span>
         <button
           onClick={() => onChange(0)}
           className="font-semibold text-muted-foreground hover:text-primary"
