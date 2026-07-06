@@ -14,7 +14,118 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      assigned_workouts: {
+        Row: {
+          assigned_date: string
+          client_id: string
+          created_at: string
+          exercise_name: string
+          id: string
+          is_completed: boolean
+        }
+        Insert: {
+          assigned_date?: string
+          client_id: string
+          created_at?: string
+          exercise_name: string
+          id?: string
+          is_completed?: boolean
+        }
+        Update: {
+          assigned_date?: string
+          client_id?: string
+          created_at?: string
+          exercise_name?: string
+          id?: string
+          is_completed?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assigned_workouts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leaderboard_stats: {
+        Row: {
+          client_id: string
+          current_streak: number
+          has_freeze: boolean
+          id: string
+          last_logged_date: string | null
+          total_points: number
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          current_streak?: number
+          has_freeze?: boolean
+          id?: string
+          last_logged_date?: string | null
+          total_points?: number
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          current_streak?: number
+          has_freeze?: boolean
+          id?: string
+          last_logged_date?: string | null
+          total_points?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leaderboard_stats_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          calorie_target_kcal: number | null
+          created_at: string
+          current_weight_kg: number | null
+          full_name: string
+          id: string
+          onboarded: boolean
+          protein_target_g: number | null
+          role: string
+          updated_at: string
+          water_target_l: number | null
+        }
+        Insert: {
+          calorie_target_kcal?: number | null
+          created_at?: string
+          current_weight_kg?: number | null
+          full_name?: string
+          id: string
+          onboarded?: boolean
+          protein_target_g?: number | null
+          role?: string
+          updated_at?: string
+          water_target_l?: number | null
+        }
+        Update: {
+          calorie_target_kcal?: number | null
+          created_at?: string
+          current_weight_kg?: number | null
+          full_name?: string
+          id?: string
+          onboarded?: boolean
+          protein_target_g?: number | null
+          role?: string
+          updated_at?: string
+          water_target_l?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
