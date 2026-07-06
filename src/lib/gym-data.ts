@@ -1,126 +1,258 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
-export type LeaderUser = {
+// Supabase types haven't been regenerated for the new tables yet, so we cast the client.
+const sb = supabase as unknown as {
+  from: (t: string) => any;
+  auth: typeof supabase.auth;
+};
+
+export type Profile = {
   id: string;
-  name: string;
-  handle: string;
-  initials: string;
-  streak: number;
-  points: number;
-  hasFreeze: boolean;
+  full_name: string;
+  current_weight_kg: number | null;
+  calorie_target_kcal: number | null;
+  protein_target_g: number | null;
+  water_target_l: number | null;
+  role: "admin" | "client";
+  onboarded: boolean;
+  created_at: string;
 };
 
-export type DailyLog = {
-  protein: number; // g
-  calories: number; // kcal
-  water: number; // liters (0..5, step 0.25)
-  exercises: Record<string, boolean>;
+export type Workout = {
+  id: string;
+  client_id: string;
+  exercise_name: string;
+  is_completed: boolean;
+  assigned_date: string;
 };
 
-export const EXERCISES = [
-  { id: "warmup", label: "Warm-up · 10 min" },
-  { id: "compound", label: "Compound lift" },
-  { id: "accessory", label: "Accessory work" },
-  { id: "cardio", label: "Conditioning" },
-  { id: "mobility", label: "Mobility & stretch" },
-] as const;
-
-const initialUsers: LeaderUser[] = [
-  { id: "u1", name: "You", handle: "@you", initials: "YO", streak: 24, points: 2480, hasFreeze: true },
-  { id: "u2", name: "Marcus Vale", handle: "@mvale", initials: "MV", streak: 41, points: 3910, hasFreeze: false },
-  { id: "u3", name: "Sana Reyes", handle: "@sreyes", initials: "SR", streak: 38, points: 3620, hasFreeze: true },
-  { id: "u4", name: "Kenji Ito", handle: "@kito", initials: "KI", streak: 33, points: 3155, hasFreeze: false },
-  { id: "u5", name: "Amara Diallo", handle: "@amara", initials: "AD", streak: 27, points: 2720, hasFreeze: true },
-  { id: "u6", name: "Luca Moretti", handle: "@luca", initials: "LM", streak: 22, points: 2210, hasFreeze: false },
-  { id: "u7", name: "Priya Nair", handle: "@priya", initials: "PN", streak: 19, points: 1980, hasFreeze: false },
-  { id: "u8", name: "Diego Alvarez", handle: "@dalv", initials: "DA", streak: 17, points: 1745, hasFreeze: true },
-  { id: "u9", name: "Freya Holm", handle: "@freya", initials: "FH", streak: 14, points: 1490, hasFreeze: false },
-  { id: "u10", name: "Nate Brooks", handle: "@nate", initials: "NB", streak: 11, points: 1180, hasFreeze: false },
-  { id: "u11", name: "Yuki Tanaka", handle: "@yuki", initials: "YT", streak: 9, points: 995, hasFreeze: true },
-  { id: "u12", name: "Omar Faruq", handle: "@omar", initials: "OF", streak: 6, points: 720, hasFreeze: false },
-];
-
-type Store = {
-  users: LeaderUser[];
-  log: DailyLog;
-  loggedToday: boolean;
+export type Stats = {
+  id: string;
+  client_id: string;
+  current_streak: number;
+  total_points: number;
+  has_freeze: boolean;
+  last_logged_date: string | null;
 };
 
-let state: Store = {
-  users: initialUsers,
-  log: { protein: 140, calories: 2200, water: 1.75, exercises: { warmup: true, compound: true, accessory: false, cardio: false, mobility: false } },
-  loggedToday: false,
-};
+export type LeaderRow = { profile: Profile; stats: Stats };
 
-const listeners = new Set<() => void>();
-const emit = () => listeners.forEach((l) => l());
-
-function subscribe(l: () => void) {
-  listeners.add(l);
-  return () => listeners.delete(l);
+export function initialsFor(name: string) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "AT";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
-export function useGymStore() {
-  return useSyncExternalStore(subscribe, () => state, () => state);
+/* ---------- session ---------- */
+
+export function useSession() {
+  const [userId, setUserId] = useState<string | null | undefined>(undefined);
+  const qc = useQueryClient();
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setUserId(data.session?.user.id ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
+      setUserId(session?.user.id ?? null);
+      if (event === "SIGNED_OUT") qc.clear();
+      else qc.invalidateQueries();
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [qc]);
+  return { userId: userId ?? null, loading: userId === undefined };
 }
 
-export function updateLog(patch: Partial<DailyLog>) {
-  state = { ...state, log: { ...state.log, ...patch } };
-  emit();
+/* ---------- queries ---------- */
+
+export function useMyProfile() {
+  const { userId } = useSession();
+  return useQuery({
+    queryKey: ["profile", userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<Profile | null> => {
+      if (!userId) return null;
+      const { data, error } = await sb.from("profiles").select("*").eq("id", userId).maybeSingle();
+      if (error) throw error;
+      return data as Profile | null;
+    },
+  });
 }
 
-export function toggleExercise(id: string) {
-  state = {
-    ...state,
-    log: { ...state.log, exercises: { ...state.log.exercises, [id]: !state.log.exercises[id] } },
-  };
-  emit();
+export function useMyStats() {
+  const { userId } = useSession();
+  return useQuery({
+    queryKey: ["stats", userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<Stats | null> => {
+      if (!userId) return null;
+      const { data, error } = await sb
+        .from("leaderboard_stats")
+        .select("*")
+        .eq("client_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as Stats | null;
+    },
+  });
+}
+
+export function useTodayWorkouts() {
+  const { userId } = useSession();
+  const today = new Date().toISOString().slice(0, 10);
+  return useQuery({
+    queryKey: ["workouts", userId, today],
+    enabled: !!userId,
+    queryFn: async (): Promise<Workout[]> => {
+      if (!userId) return [];
+      const { data, error } = await sb
+        .from("assigned_workouts")
+        .select("*")
+        .eq("client_id", userId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Workout[];
+    },
+  });
+}
+
+export function useLeaderboard() {
+  return useQuery({
+    queryKey: ["leaderboard"],
+    queryFn: async (): Promise<LeaderRow[]> => {
+      const { data: stats, error: e1 } = await sb
+        .from("leaderboard_stats")
+        .select("*")
+        .order("total_points", { ascending: false });
+      if (e1) throw e1;
+      const ids = (stats ?? []).map((s: Stats) => s.client_id);
+      if (ids.length === 0) return [];
+      const { data: profiles, error: e2 } = await sb.from("profiles").select("*").in("id", ids);
+      if (e2) throw e2;
+      const byId = new Map<string, Profile>((profiles ?? []).map((p: Profile) => [p.id, p]));
+      return (stats as Stats[])
+        .map((s) => ({ stats: s, profile: byId.get(s.client_id)! }))
+        .filter((r) => r.profile);
+    },
+  });
+}
+
+/* ---------- mutations ---------- */
+
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async (patch: Partial<Profile>) => {
+      if (!userId) throw new Error("No session");
+      const { error } = await sb.from("profiles").update(patch).eq("id", userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["profile", userId] });
+      qc.invalidateQueries({ queryKey: ["leaderboard"] });
+    },
+  });
+}
+
+export function useToggleWorkout() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async ({ id, is_completed }: { id: string; is_completed: boolean }) => {
+      const { error } = await sb.from("assigned_workouts").update({ is_completed }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workouts", userId] }),
+  });
+}
+
+export function useCommitDailyLog() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async () => {
+      if (!userId) throw new Error("No session");
+      const { data: current, error: e1 } = await sb
+        .from("leaderboard_stats")
+        .select("*")
+        .eq("client_id", userId)
+        .maybeSingle();
+      if (e1) throw e1;
+      const s = current as Stats | null;
+      const today = new Date().toISOString().slice(0, 10);
+      const nextStreak = (s?.current_streak ?? 0) + 1;
+      const nextPoints = (s?.total_points ?? 0) + 40;
+      const { error } = await sb
+        .from("leaderboard_stats")
+        .update({
+          current_streak: nextStreak,
+          total_points: nextPoints,
+          last_logged_date: today,
+        })
+        .eq("client_id", userId);
+      if (error) throw error;
+      return { nextStreak, nextPoints };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stats", userId] });
+      qc.invalidateQueries({ queryKey: ["leaderboard"] });
+    },
+  });
 }
 
 /**
  * Soft-Landing Streak Logic.
- * If the user misses a day:
- *  - If they hold a Streak Shield (Freeze), consume it and preserve the streak fully.
- *  - Otherwise, drop the streak by 2 days (min 0) and deduct 50 points (min 0).
+ * Missing a day:
+ *  - If Freeze is active, consume it and preserve streak/points.
+ *  - Otherwise, streak drops by 2 (min 0) and points drop by 50 (min 0).
  */
-export function applyMissedDay(userId: string): {
-  usedFreeze: boolean;
-  streakDelta: number;
-  pointsDelta: number;
-} {
-  let result = { usedFreeze: false, streakDelta: 0, pointsDelta: 0 };
-  state = {
-    ...state,
-    users: state.users.map((u) => {
-      if (u.id !== userId) return u;
-      if (u.hasFreeze) {
-        result = { usedFreeze: true, streakDelta: 0, pointsDelta: 0 };
-        return { ...u, hasFreeze: false };
+export function useApplyMissedDay() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async (): Promise<{ usedFreeze: boolean; streakDelta: number; pointsDelta: number }> => {
+      if (!userId) throw new Error("No session");
+      const { data: current, error: e1 } = await sb
+        .from("leaderboard_stats")
+        .select("*")
+        .eq("client_id", userId)
+        .maybeSingle();
+      if (e1) throw e1;
+      const s = (current as Stats | null) ?? {
+        current_streak: 0,
+        total_points: 0,
+        has_freeze: false,
+      };
+      if (s.has_freeze) {
+        const { error } = await sb
+          .from("leaderboard_stats")
+          .update({ has_freeze: false })
+          .eq("client_id", userId);
+        if (error) throw error;
+        return { usedFreeze: true, streakDelta: 0, pointsDelta: 0 };
       }
-      const newStreak = Math.max(0, u.streak - 2);
-      const newPoints = Math.max(0, u.points - 50);
-      result = { usedFreeze: false, streakDelta: newStreak - u.streak, pointsDelta: newPoints - u.points };
-      return { ...u, streak: newStreak, points: newPoints };
-    }),
-  };
-  emit();
-  return result;
+      const nextStreak = Math.max(0, s.current_streak - 2);
+      const nextPoints = Math.max(0, s.total_points - 50);
+      const { error } = await sb
+        .from("leaderboard_stats")
+        .update({ current_streak: nextStreak, total_points: nextPoints })
+        .eq("client_id", userId);
+      if (error) throw error;
+      return {
+        usedFreeze: false,
+        streakDelta: nextStreak - s.current_streak,
+        pointsDelta: nextPoints - s.total_points,
+      };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stats", userId] });
+      qc.invalidateQueries({ queryKey: ["leaderboard"] });
+    },
+  });
 }
 
-export function commitDailyLog(userId: string) {
-  // Reward: +40 points, +1 streak day
-  state = {
-    ...state,
-    loggedToday: true,
-    users: state.users.map((u) =>
-      u.id === userId ? { ...u, streak: u.streak + 1, points: u.points + 40 } : u,
-    ),
-  };
-  emit();
+export async function signOut() {
+  await supabase.auth.signOut();
 }
-
-export function getSortedLeaderboard() {
-  return [...state.users].sort((a, b) => b.points - a.points);
-}
-
-export const CURRENT_USER_ID = "u1";
