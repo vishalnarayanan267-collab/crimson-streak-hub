@@ -271,3 +271,114 @@ export function useApplyMissedDay() {
 export async function signOut() {
   await supabase.auth.signOut();
 }
+
+/* ---------- admin ---------- */
+
+export function useAllClients() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-clients-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        qc.invalidateQueries({ queryKey: ["admin-clients"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "leaderboard_stats" }, () => {
+        qc.invalidateQueries({ queryKey: ["admin-clients"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "assigned_workouts" }, () => {
+        qc.invalidateQueries({ queryKey: ["admin-clients"] });
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc]);
+  return useQuery({
+    queryKey: ["admin-clients"],
+    queryFn: async () => {
+      const { data: profiles, error } = await sb
+        .from("profiles")
+        .select("*")
+        .eq("role", "client")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const ids = (profiles ?? []).map((p: Profile) => p.id);
+      if (ids.length === 0) return [];
+      const today = new Date().toISOString().slice(0, 10);
+      const [{ data: stats }, { data: workouts }] = await Promise.all([
+        sb.from("leaderboard_stats").select("*").in("client_id", ids),
+        sb
+          .from("assigned_workouts")
+          .select("*")
+          .in("client_id", ids)
+          .eq("assigned_date", today),
+      ]);
+      const statsBy = new Map<string, Stats>((stats ?? []).map((s: Stats) => [s.client_id, s]));
+      const wByClient = new Map<string, Workout[]>();
+      for (const w of (workouts ?? []) as Workout[]) {
+        const arr = wByClient.get(w.client_id) ?? [];
+        arr.push(w);
+        wByClient.set(w.client_id, arr);
+      }
+      return (profiles as Profile[]).map((p) => {
+        const ws = wByClient.get(p.id) ?? [];
+        const done = ws.filter((w) => w.is_completed).length;
+        return {
+          profile: p,
+          stats: statsBy.get(p.id) ?? null,
+          workoutsDone: done,
+          workoutsTotal: ws.length,
+        };
+      });
+    },
+  });
+}
+
+export function useClientWorkouts(clientId: string | null) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!clientId) return;
+    const channel = supabase
+      .channel(`client-workouts-${clientId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "assigned_workouts", filter: `client_id=eq.${clientId}` },
+        () => qc.invalidateQueries({ queryKey: ["client-workouts", clientId] }),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc, clientId]);
+  return useQuery({
+    queryKey: ["client-workouts", clientId],
+    enabled: !!clientId,
+    queryFn: async (): Promise<Workout[]> => {
+      const { data, error } = await sb
+        .from("assigned_workouts")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("assigned_date", { ascending: false })
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Workout[];
+    },
+  });
+}
+
+export function useAssignWorkout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ clientId, exerciseName }: { clientId: string; exerciseName: string }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const { error } = await sb
+        .from("assigned_workouts")
+        .insert({ client_id: clientId, exercise_name: exerciseName, assigned_date: today });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["client-workouts", vars.clientId] });
+      qc.invalidateQueries({ queryKey: ["admin-clients"] });
+    },
+  });
+}
