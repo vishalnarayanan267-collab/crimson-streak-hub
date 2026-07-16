@@ -1,21 +1,25 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Flame, Home, LogOut, Trophy, User } from "lucide-react";
+import { Flame, Home, LogOut, ShieldCheck, Trophy, User } from "lucide-react";
 import type { ReactNode } from "react";
 import { AuthGate } from "./auth-gate";
 import { Toaster } from "@/components/ui/sonner";
 import { initialsFor, signOut, useMyProfile } from "@/lib/gym-data";
 
-const NAV = [
+const BASE_NAV = [
   { to: "/", label: "Today", icon: Home },
   { to: "/leaderboard", label: "Ranks", icon: Trophy },
   { to: "/profile", label: "Profile", icon: User },
 ];
+const ADMIN_ITEM = { to: "/admin", label: "Admin", icon: ShieldCheck };
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: profile } = useMyProfile();
   const displayName = profile?.full_name?.trim() || "Athlete";
   const initials = initialsFor(displayName);
+  const isAdmin = profile?.role === "admin";
+  const NAV = isAdmin ? [...BASE_NAV, ADMIN_ITEM] : BASE_NAV;
+  const mobileNav = NAV;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -108,8 +112,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {/* Mobile bottom nav */}
         <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-background/90 px-4 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-xl lg:hidden">
-          <div className="mx-auto grid max-w-md grid-cols-3 gap-2">
-            {NAV.map(({ to, label, icon: Icon }) => {
+          <div className={`mx-auto grid max-w-md gap-2 ${mobileNav.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}>
+            {mobileNav.map(({ to, label, icon: Icon }) => {
               const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
               return (
                 <Link
