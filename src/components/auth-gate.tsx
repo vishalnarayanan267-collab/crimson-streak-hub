@@ -12,14 +12,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (!userId) return <AuthScreen />;
   if (profileLoading) return <Splash />;
 
-  return (
-    <>
-      {children}
-      {profile && !profile.onboarded && (
+  if (profile && !profile.onboarded) {
+    return (
+      <div className="min-h-screen bg-background">
         <OnboardingModal initialName={profile.full_name} />
-      )}
-    </>
-  );
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 function Splash() {
