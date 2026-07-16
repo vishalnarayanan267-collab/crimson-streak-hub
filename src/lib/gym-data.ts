@@ -118,6 +118,21 @@ export function useTodayWorkouts() {
 }
 
 export function useLeaderboard() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const channel = supabase
+      .channel("leaderboard-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "leaderboard_stats" }, () => {
+        qc.invalidateQueries({ queryKey: ["leaderboard"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        qc.invalidateQueries({ queryKey: ["leaderboard"] });
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc]);
   return useQuery({
     queryKey: ["leaderboard"],
     queryFn: async (): Promise<LeaderRow[]> => {
