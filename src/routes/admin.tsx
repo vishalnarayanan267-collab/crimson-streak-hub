@@ -1,14 +1,19 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Beef, ChevronRight, Droplets, Flame, Plus, Scale, ShieldCheck, Users, X } from "lucide-react";
+import { BarChart3, Beef, ChevronRight, Droplets, Flame, LineChart, Plus, Scale, ShieldCheck, Trash2, Users, X } from "lucide-react";
 import {
+  GOAL_META,
   initialsFor,
   useAllClients,
   useAssignWorkout,
   useClientWorkouts,
+  useDeleteWorkout,
+  useExerciseLogs,
   useMyProfile,
   type Profile,
+  type ExerciseLog,
 } from "@/lib/gym-data";
+import { GoalBadge } from "@/components/goal-badge";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
@@ -47,7 +52,7 @@ function AdminPage() {
           </div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight lg:text-3xl">Client Command Center</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Monitor every athlete's macros, assign work, and watch completions land live.
+            Monitor every trainee's macros, assign work, and watch completions land live.
           </p>
         </div>
         <div className="hidden items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary sm:flex">
@@ -73,6 +78,7 @@ function ClientGrid({
   onSelect: (id: string) => void;
 }) {
   const { data: clients, isLoading } = useAllClients();
+  const list = clients ?? [];
 
   if (isLoading) {
     return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -82,13 +88,13 @@ function ClientGrid({
     </div>;
   }
 
-  if (!clients || clients.length === 0) {
+  if (list.length === 0) {
     return (
       <div className="rounded-2xl border border-hairline bg-surface p-10 text-center">
         <Users className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-        <div className="text-sm font-semibold">No clients yet</div>
+        <div className="text-sm font-semibold">No trainees yet</div>
         <div className="mt-1 text-xs text-muted-foreground">
-          As athletes sign up, they'll appear here.
+          As trainees sign up, they'll appear here.
         </div>
       </div>
     );
@@ -96,13 +102,13 @@ function ClientGrid({
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {clients.map((c) => (
+      {list.map((c) => (
         <ClientCard
           key={c.profile.id}
           profile={c.profile}
           stats={c.stats}
-          workoutsDone={c.workoutsDone}
-          workoutsTotal={c.workoutsTotal}
+          workoutsDone={c.workoutsDone ?? 0}
+          workoutsTotal={c.workoutsTotal ?? 0}
           active={selectedId === c.profile.id}
           onClick={() => onSelect(c.profile.id)}
         />
@@ -126,9 +132,10 @@ function ClientCard({
   active: boolean;
   onClick: () => void;
 }) {
-  const name = profile.full_name?.trim() || "Athlete";
+  const name = profile?.full_name?.trim() || "Trainee";
   const initials = initialsFor(name);
   const pct = workoutsTotal > 0 ? Math.round((workoutsDone / workoutsTotal) * 100) : 0;
+  const sessionRatio = workoutsTotal > 0 ? workoutsDone / workoutsTotal : 0;
 
   return (
     <button
@@ -142,19 +149,46 @@ function ClientCard({
           {initials}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{name}</div>
+          <div className="flex items-center gap-2">
+            <div className="truncate text-sm font-semibold">{name}</div>
+            <GoalBadge goal={profile?.primary_goal ?? null} size="sm" />
+          </div>
           <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <Flame className="h-3 w-3 text-primary" />
             {stats?.current_streak ?? 0}d · {stats?.total_points ?? 0} pts
+            {profile?.age ? <span className="ml-1">· {profile.age}y</span> : null}
+            {profile?.height_cm ? <span>· {profile.height_cm}cm</span> : null}
           </div>
         </div>
         <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-[10px]">
-        <Metric icon={Scale} label="Weight" value={profile.current_weight_kg ? `${profile.current_weight_kg}kg` : "—"} />
-        <Metric icon={Beef} label="Protein" value={profile.protein_target_g ? `${profile.protein_target_g}g` : "—"} />
-        <Metric icon={Droplets} label="Water" value={profile.water_target_l ? `${profile.water_target_l}L` : "—"} />
+        <Metric icon={Scale} label="Weight" value={profile?.current_weight_kg != null ? `${profile.current_weight_kg}kg` : "—"} />
+        <Metric icon={Beef} label="Protein" value={profile?.protein_target_g != null ? `${profile.protein_target_g}g` : "—"} />
+        <Metric icon={Droplets} label="Water" value={profile?.water_target_l != null ? `${profile.water_target_l}L` : "—"} />
+      </div>
+
+      {/* Triple mini macro progress bars */}
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <MacroBar
+          label="Cal"
+          ratio={sessionRatio}
+          tone="crimson"
+          value={profile?.calorie_target_kcal ? `${profile.calorie_target_kcal}` : "—"}
+        />
+        <MacroBar
+          label="Pro"
+          ratio={sessionRatio}
+          tone="amber"
+          value={profile?.protein_target_g ? `${profile.protein_target_g}g` : "—"}
+        />
+        <MacroBar
+          label="H₂O"
+          ratio={sessionRatio}
+          tone="steel"
+          value={profile?.water_target_l ? `${profile.water_target_l}L` : "—"}
+        />
       </div>
 
       <div className="mt-4">
@@ -172,6 +206,36 @@ function ClientCard({
         </div>
       </div>
     </button>
+  );
+}
+
+function MacroBar({
+  label,
+  ratio,
+  tone,
+  value,
+}: {
+  label: string;
+  ratio: number;
+  tone: "crimson" | "amber" | "steel";
+  value: string;
+}) {
+  const toneClass: Record<string, string> = {
+    crimson: "bg-primary",
+    amber: "bg-[oklch(0.72_0.14_70)]",
+    steel: "bg-[oklch(0.7_0.06_240)]",
+  };
+  const pct = Math.max(0, Math.min(1, ratio ?? 0)) * 100;
+  return (
+    <div className="rounded-lg bg-surface-2 px-2 py-1.5">
+      <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-muted-foreground">
+        <span>{label}</span>
+        <span className="text-[9px] font-semibold text-foreground/80">{value}</span>
+      </div>
+      <div className="mt-1 h-1 overflow-hidden rounded-full bg-background/60">
+        <div className={`h-full rounded-full ${toneClass[tone]} transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
   );
 }
 
@@ -203,9 +267,11 @@ function ClientDetailDrawer({
   onClose: () => void;
 }) {
   const { data: clients } = useAllClients();
-  const client = clients?.find((c) => c.profile.id === clientId);
+  const client = (clients ?? []).find((c) => c.profile.id === clientId) ?? null;
   const { data: workouts } = useClientWorkouts(clientId);
+  const { data: logs } = useExerciseLogs(clientId, 14);
   const assign = useAssignWorkout();
+  const del = useDeleteWorkout();
   const [exerciseName, setExerciseName] = useState("");
 
   const submit = async (e: React.FormEvent) => {
@@ -224,7 +290,15 @@ function ClientDetailDrawer({
   const today = new Date().toISOString().slice(0, 10);
   const todayWorkouts = (workouts ?? []).filter((w) => w.assigned_date === today);
   const earlier = (workouts ?? []).filter((w) => w.assigned_date !== today).slice(0, 8);
-  const name = client?.profile.full_name?.trim() || "Athlete";
+  const name = client?.profile?.full_name?.trim() || "Trainee";
+  const safeLogs: ExerciseLog[] = logs ?? [];
+
+  const logsByExercise = new Map<string, ExerciseLog[]>();
+  for (const l of safeLogs) {
+    const arr = logsByExercise.get(l.exercise_name) ?? [];
+    arr.push(l);
+    logsByExercise.set(l.exercise_name, arr);
+  }
 
   return (
     <div
@@ -242,10 +316,15 @@ function ClientDetailDrawer({
             </div>
             <div>
               <div className="text-lg font-bold tracking-tight">{name}</div>
-              <div className="text-[11px] text-muted-foreground">
-                {client?.profile.current_weight_kg ?? "—"}kg ·{" "}
-                {client?.profile.calorie_target_kcal ?? "—"} kcal ·{" "}
-                {client?.profile.protein_target_g ?? "—"}g protein
+              <div className="mt-0.5 flex items-center gap-2">
+                <GoalBadge goal={client?.profile?.primary_goal ?? null} size="sm" />
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                {client?.profile?.current_weight_kg ?? "—"}kg ·{" "}
+                {client?.profile?.age ?? "—"}y ·{" "}
+                {client?.profile?.height_cm ?? "—"}cm ·{" "}
+                {client?.profile?.calorie_target_kcal ?? "—"} kcal ·{" "}
+                {client?.profile?.protein_target_g ?? "—"}g protein
               </div>
             </div>
           </div>
@@ -287,7 +366,13 @@ function ClientDetailDrawer({
             ) : (
               <ul className="space-y-2">
                 {todayWorkouts.map((w) => (
-                  <WorkoutRow key={w.id} name={w.exercise_name} done={w.is_completed} live />
+                  <WorkoutRow
+                    key={w.id}
+                    name={w.exercise_name}
+                    done={w.is_completed}
+                    live
+                    onDelete={() => del.mutate(w.id)}
+                  />
                 ))}
               </ul>
             )}
@@ -310,6 +395,49 @@ function ClientDetailDrawer({
               </ul>
             </section>
           )}
+
+          {/* Historical performance chart */}
+          <section className="mt-6">
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+              <LineChart className="h-3 w-3 text-primary" />
+              Performance History · 14d
+            </div>
+            {logsByExercise.size === 0 ? (
+              <div className="rounded-xl border border-dashed border-hairline bg-surface p-4 text-center text-xs text-muted-foreground">
+                No sets logged yet.
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {Array.from(logsByExercise.entries())
+                  .slice(0, 5)
+                  .map(([exName, entries]) => {
+                    const max = Math.max(1, ...entries.map((e) => e.weight_kg));
+                    const days = entries.slice(0, 10).reverse();
+                    return (
+                      <div key={exName} className="rounded-xl border border-hairline bg-surface p-3">
+                        <div className="flex items-baseline justify-between">
+                          <div className="truncate text-sm font-semibold">{exName}</div>
+                          <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground">
+                            <BarChart3 className="h-3 w-3 text-primary" />
+                            peak <span className="font-bold text-primary">{max}kg</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex h-14 items-end gap-1">
+                          {days.map((e) => (
+                            <div
+                              key={e.id}
+                              className="flex-1 rounded-t-sm bg-gradient-to-t from-primary/60 to-primary"
+                              style={{ height: `${Math.max(6, (e.weight_kg / max) * 100)}%` }}
+                              title={`${e.logged_date}: ${e.sets}×${e.reps} @ ${e.weight_kg}kg`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>
@@ -321,11 +449,13 @@ function WorkoutRow({
   done,
   date,
   live,
+  onDelete,
 }: {
   name: string;
   done: boolean;
   date?: string;
   live?: boolean;
+  onDelete?: () => void;
 }) {
   return (
     <li
@@ -362,6 +492,15 @@ function WorkoutRow({
             />
           </svg>
         </span>
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            aria-label="Remove workout"
+            className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-primary/15 hover:text-primary"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </li>
   );
