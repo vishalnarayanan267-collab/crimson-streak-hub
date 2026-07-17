@@ -18,6 +18,17 @@ export type Profile = {
   role: "admin" | "client";
   onboarded: boolean;
   created_at: string;
+  age: number | null;
+  height_cm: number | null;
+  primary_goal: PrimaryGoal | null;
+};
+
+export type PrimaryGoal = "weight_loss" | "muscle_gain" | "general_conditioning";
+
+export const GOAL_META: Record<PrimaryGoal, { label: string; short: string; tone: "crimson" | "steel" | "amber" }> = {
+  weight_loss: { label: "Weight Loss", short: "Shredding", tone: "crimson" },
+  muscle_gain: { label: "Muscle Gain", short: "Bulking", tone: "steel" },
+  general_conditioning: { label: "General Conditioning", short: "Conditioning", tone: "amber" },
 };
 
 export type Workout = {
@@ -41,10 +52,22 @@ export type LeaderRow = { profile: Profile; stats: Stats };
 
 export function initialsFor(name: string) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "AT";
+  if (parts.length === 0) return "TR";
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
+
+export type ExerciseLog = {
+  id: string;
+  client_id: string;
+  workout_id: string | null;
+  exercise_name: string;
+  sets: number;
+  reps: number;
+  weight_kg: number;
+  logged_date: string;
+  created_at: string;
+};
 
 /* ---------- session ---------- */
 
