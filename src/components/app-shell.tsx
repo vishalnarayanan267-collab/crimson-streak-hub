@@ -15,7 +15,7 @@ const ADMIN_ITEM = { to: "/admin", label: "Admin", icon: ShieldCheck };
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: profile } = useMyProfile();
-  const displayName = profile?.full_name?.trim() || "Athlete";
+  const displayName = profile?.full_name?.trim() || "Trainee";
   const initials = initialsFor(displayName);
   const isAdmin = profile?.role === "admin";
   const NAV = isAdmin ? [...BASE_NAV, ADMIN_ITEM] : BASE_NAV;

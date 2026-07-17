@@ -49,6 +49,57 @@ export type Database = {
           },
         ]
       }
+      exercise_logs: {
+        Row: {
+          client_id: string
+          created_at: string
+          exercise_name: string
+          id: string
+          logged_date: string
+          reps: number
+          sets: number
+          weight_kg: number
+          workout_id: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          exercise_name: string
+          id?: string
+          logged_date?: string
+          reps?: number
+          sets?: number
+          weight_kg?: number
+          workout_id?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          exercise_name?: string
+          id?: string
+          logged_date?: string
+          reps?: number
+          sets?: number
+          weight_kg?: number
+          workout_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercise_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exercise_logs_workout_id_fkey"
+            columns: ["workout_id"]
+            isOneToOne: false
+            referencedRelation: "assigned_workouts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leaderboard_stats: {
         Row: {
           client_id: string
@@ -89,36 +140,45 @@ export type Database = {
       }
       profiles: {
         Row: {
+          age: number | null
           calorie_target_kcal: number | null
           created_at: string
           current_weight_kg: number | null
           full_name: string
+          height_cm: number | null
           id: string
           onboarded: boolean
+          primary_goal: string | null
           protein_target_g: number | null
           role: string
           updated_at: string
           water_target_l: number | null
         }
         Insert: {
+          age?: number | null
           calorie_target_kcal?: number | null
           created_at?: string
           current_weight_kg?: number | null
           full_name?: string
+          height_cm?: number | null
           id: string
           onboarded?: boolean
+          primary_goal?: string | null
           protein_target_g?: number | null
           role?: string
           updated_at?: string
           water_target_l?: number | null
         }
         Update: {
+          age?: number | null
           calorie_target_kcal?: number | null
           created_at?: string
           current_weight_kg?: number | null
           full_name?: string
+          height_cm?: number | null
           id?: string
           onboarded?: boolean
+          primary_goal?: string | null
           protein_target_g?: number | null
           role?: string
           updated_at?: string

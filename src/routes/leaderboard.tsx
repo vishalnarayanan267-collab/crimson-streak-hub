@@ -8,7 +8,7 @@ export const Route = createFileRoute("/leaderboard")({
       { title: "Leaderboard · IRONLINE" },
       {
         name: "description",
-        content: "Community rankings by total consistency points. Streaks, shields, and points across every athlete.",
+        content: "Community rankings by total consistency points. Streaks, shields, and points across every trainee.",
       },
       { property: "og:title", content: "Leaderboard · IRONLINE" },
       { property: "og:description", content: "Where the consistent rise. Compete on points, not hype." },
@@ -33,7 +33,7 @@ function Leaderboard() {
           <Trophy className="h-6 w-6 text-primary" />
         </h1>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          Ranked by total consistency points. Streak Shields protect athletes from full resets — the
+          Ranked by total consistency points. Streak Shields protect trainees from full resets — the
           grind stays honest.
         </p>
       </div>
@@ -57,9 +57,9 @@ function Leaderboard() {
               >
                 {initials}
               </div>
-              <div className="mt-2 max-w-[7rem] truncate text-xs font-semibold text-foreground">{row.profile.full_name || "Athlete"}</div>
+              <div className="mt-2 max-w-[7rem] truncate text-xs font-semibold text-foreground">{row.profile?.full_name || "Trainee"}</div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                {row.stats.total_points.toLocaleString()} pts
+                {(row.stats?.total_points ?? 0).toLocaleString()} pts
               </div>
               <div
                 className={`mt-2 w-full rounded-t-xl border-x border-t p-3 text-center ${
@@ -84,7 +84,7 @@ function Leaderboard() {
       {/* Table header */}
       <div className="mt-6 grid grid-cols-[36px_1fr_auto_auto] items-center gap-3 border-b border-hairline pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
         <span>#</span>
-        <span>Athlete</span>
+        <span>Trainee</span>
         <span className="text-right">Streak</span>
         <span className="text-right">Points</span>
       </div>
@@ -93,7 +93,7 @@ function Leaderboard() {
       {isLoading && <div className="mt-6 text-sm text-muted-foreground">Loading rankings…</div>}
       {!isLoading && ranked.length === 0 && (
         <div className="mt-6 rounded-xl border border-hairline bg-surface p-6 text-center text-sm text-muted-foreground">
-          No athletes yet. Log your day to open the board.
+          No trainees yet. Log your day to open the board.
         </div>
       )}
       <ul className="mt-1 divide-y divide-hairline">
@@ -101,10 +101,10 @@ function Leaderboard() {
           const rank = i + 1;
           const isTop3 = rank <= 3;
           const isMe = row.profile.id === userId;
-          const initials = initialsFor(row.profile.full_name);
+          const initials = initialsFor(row.profile?.full_name ?? "");
           return (
             <li
-              key={row.profile.id}
+              key={row.profile?.id ?? i}
               className={`grid grid-cols-[36px_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl px-2 py-3 transition-colors ${
                 isMe ? "bg-primary/5 ring-1 ring-inset ring-primary/30" : "hover:bg-surface/60"
               }`}
@@ -128,28 +128,28 @@ function Leaderboard() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-foreground">{row.profile.full_name || "Athlete"}</span>
+                    <span className="truncate text-sm font-semibold text-foreground">{row.profile?.full_name || "Trainee"}</span>
                     {isMe && (
                       <span className="rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary-foreground">
                         You
                       </span>
                     )}
-                    {row.stats.has_freeze && (
+                    {row.stats?.has_freeze && (
                       <Shield className="h-3 w-3 text-[oklch(0.75_0.12_220)]" />
                     )}
                   </div>
                   <div className="truncate text-[11px] text-muted-foreground">
-                    {row.profile.role === "admin" ? "Coach" : "Athlete"}
+                    {row.profile?.role === "admin" ? "Coach" : "Trainee"}
                   </div>
                 </div>
               </div>
               <div className="flex items-center justify-end gap-1 text-right">
                 <Flame className="h-3.5 w-3.5 text-primary" />
-                <span className="text-sm font-bold tabular-nums text-foreground">{row.stats.current_streak}</span>
+                <span className="text-sm font-bold tabular-nums text-foreground">{row.stats?.current_streak ?? 0}</span>
               </div>
               <div className="text-right">
                 <div className="text-sm font-extrabold tabular-nums text-foreground">
-                  {row.stats.total_points.toLocaleString()}
+                  {(row.stats?.total_points ?? 0).toLocaleString()}
                 </div>
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground">pts</div>
               </div>
