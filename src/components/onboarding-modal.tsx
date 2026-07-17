@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Beef, Droplets, Flame, Scale, User } from "lucide-react";
-import { useUpdateProfile } from "@/lib/gym-data";
+import { Beef, Droplets, Flame, Ruler, Scale, Target, User } from "lucide-react";
+import { GOAL_META, useUpdateProfile, type PrimaryGoal } from "@/lib/gym-data";
 import { toast } from "sonner";
 
 export function OnboardingModal({ initialName }: { initialName: string }) {
@@ -8,6 +8,9 @@ export function OnboardingModal({ initialName }: { initialName: string }) {
   const [step, setStep] = useState(0);
   const [name, setName] = useState(initialName);
   const [weight, setWeight] = useState<number>(75);
+  const [age, setAge] = useState<number>(25);
+  const [height, setHeight] = useState<number>(175);
+  const [goal, setGoal] = useState<PrimaryGoal | null>(null);
   const [calories, setCalories] = useState<number>(2600);
   const [protein, setProtein] = useState<number>(150);
   const [water, setWater] = useState<number>(3);
@@ -15,8 +18,11 @@ export function OnboardingModal({ initialName }: { initialName: string }) {
   async function finish() {
     try {
       await update.mutateAsync({
-        full_name: name.trim() || "Athlete",
+        full_name: name.trim() || "Trainee",
         current_weight_kg: weight,
+        age,
+        height_cm: height,
+        primary_goal: goal,
         calorie_target_kcal: calories,
         protein_target_g: protein,
         water_target_l: water,
@@ -44,6 +50,20 @@ export function OnboardingModal({ initialName }: { initialName: string }) {
       canNext: name.trim().length > 0,
     },
     {
+      icon: User,
+      title: "How old are you?",
+      hint: "Age helps us calibrate recovery windows.",
+      body: <NumberStepper value={age} onChange={setAge} step={1} unit="yrs" min={13} max={90} />,
+      canNext: age > 0,
+    },
+    {
+      icon: Ruler,
+      title: "Your height",
+      hint: "Used with weight for body composition context.",
+      body: <NumberStepper value={height} onChange={setHeight} step={1} unit="cm" min={120} max={230} />,
+      canNext: height > 0,
+    },
+    {
       icon: Scale,
       title: "Current weight",
       hint: "We'll use this to calibrate your macro targets.",
@@ -51,6 +71,37 @@ export function OnboardingModal({ initialName }: { initialName: string }) {
         <NumberStepper value={weight} onChange={setWeight} step={0.5} unit="kg" min={30} max={250} />
       ),
       canNext: weight > 0,
+    },
+    {
+      icon: Target,
+      title: "Primary fitness goal",
+      hint: "This colors your dashboard badge & coach view.",
+      body: (
+        <div className="grid gap-2">
+          {(Object.keys(GOAL_META) as PrimaryGoal[]).map((g) => {
+            const meta = GOAL_META[g];
+            const active = goal === g;
+            return (
+              <button
+                key={g}
+                onClick={() => setGoal(g)}
+                className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
+                  active
+                    ? "border-primary/60 bg-primary/10 ring-1 ring-primary/40"
+                    : "border-hairline bg-surface-2 hover:border-primary/40"
+                }`}
+              >
+                <div>
+                  <div className="text-sm font-bold">{meta.label}</div>
+                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground">{meta.short}</div>
+                </div>
+                <GoalDot tone={meta.tone} />
+              </button>
+            );
+          })}
+        </div>
+      ),
+      canNext: goal !== null,
     },
     {
       icon: Flame,
@@ -136,6 +187,15 @@ export function OnboardingModal({ initialName }: { initialName: string }) {
       </div>
     </div>
   );
+}
+
+function GoalDot({ tone }: { tone: "crimson" | "steel" | "amber" }) {
+  const bg: Record<string, string> = {
+    crimson: "bg-primary shadow-[0_0_14px_rgba(255,60,60,0.6)]",
+    steel: "bg-[oklch(0.75_0.05_240)]",
+    amber: "bg-[oklch(0.78_0.14_70)]",
+  };
+  return <span className={`h-3 w-3 rounded-full ${bg[tone]}`} aria-hidden />;
 }
 
 function NumberStepper({
