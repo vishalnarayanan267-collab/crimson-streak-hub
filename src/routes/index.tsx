@@ -1,17 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Beef, Check, Droplets, Flame, Minus, Plus, Shield, Snowflake, Zap } from "lucide-react";
+import { BarChart3, Beef, Check, ChevronDown, Droplets, Edit3, Flame, LineChart, Minus, Pencil, Plus, Shield, Snowflake, Trash2, X, Zap } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  useAddExerciseLog,
+  useAddWorkout,
   useCommitDailyLog,
+  useDeleteWorkout,
+  useExerciseLogs,
   useMyProfile,
   useMyStats,
+  useRenameWorkout,
   useToggleWorkout,
   useTodayWorkouts,
+  type ExerciseLog,
   type Workout,
 } from "@/lib/gym-data";
 import { toast } from "sonner";
+import { GoalBadge } from "@/components/goal-badge";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -23,6 +30,12 @@ function Dashboard() {
   const { data: workouts = [] } = useTodayWorkouts();
   const toggleWorkout = useToggleWorkout();
   const commitLog = useCommitDailyLog();
+  const addWorkout = useAddWorkout();
+  const deleteWorkout = useDeleteWorkout();
+  const renameWorkout = useRenameWorkout();
+  const [editMode, setEditMode] = useState(false);
+  const [newExercise, setNewExercise] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const proteinTarget = profile?.protein_target_g ?? 150;
   const calorieTarget = profile?.calorie_target_kcal ?? 2600;
@@ -33,11 +46,12 @@ function Dashboard() {
   const [calories, setCalories] = useState(0);
   const [water, setWater] = useState(0);
 
+  const safeWorkouts: Workout[] = workouts ?? [];
   const completed = useMemo(
-    () => workouts.filter((w: Workout) => w.is_completed).length,
-    [workouts],
+    () => safeWorkouts.filter((w) => w.is_completed).length,
+    [safeWorkouts],
   );
-  const total = Math.max(1, workouts.length);
+  const total = Math.max(1, safeWorkouts.length);
   const completion = Math.round(
     ((protein > 0 ? 1 : 0) +
       (calories > 0 ? 1 : 0) +
@@ -103,6 +117,7 @@ function Dashboard() {
               <Badge tone="accent">
                 <Zap className="h-3 w-3" /> {points.toLocaleString()} pts
               </Badge>
+              {profile?.primary_goal && <GoalBadge goal={profile.primary_goal} />}
             </div>
           </div>
           <div className="hidden shrink-0 sm:block">
@@ -172,45 +187,78 @@ function Dashboard() {
         <MetricCard
           icon={<Check className="h-4 w-4" />}
           label="Session"
-          value={`${completed}/${workouts.length}`}
+          value={`${completed}/${safeWorkouts.length}`}
           unit="done"
         >
-          {workouts.length === 0 ? (
-            <div className="mt-3 text-sm text-muted-foreground">No exercises assigned today.</div>
-          ) : (
-            <ul className="mt-3 divide-y divide-hairline">
-              {workouts.map((ex: Workout) => {
-                const done = ex.is_completed;
-                return (
-                  <li key={ex.id}>
-                    <label className="group flex cursor-pointer items-center gap-3 py-3">
-                      <Checkbox
-                        checked={done}
-                        onCheckedChange={() =>
-                          toggleWorkout.mutate({ id: ex.id, is_completed: !done })
-                        }
-                        className="h-5 w-5 rounded-md border-hairline data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
-                      />
-                      <span
-                        className={`text-sm font-medium transition-all ${
-                          done ? "text-muted-foreground line-through" : "text-foreground"
-                        }`}
-                      >
-                        {ex.exercise_name}
-                      </span>
-                      {done && (
-                        <span className="ml-auto inline-flex animate-pop-in items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
-                          Done
-                        </span>
-                      )}
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <div className="mt-3">
+            <div className="mb-2 flex items-center justify-end">
+              <button
+                onClick={() => setEditMode((v) => !v)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                  editMode
+                    ? "border-primary/50 bg-primary/10 text-primary"
+                    : "border-hairline text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {editMode ? <X className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />}
+                {editMode ? "Done" : "Edit"}
+              </button>
+            </div>
+
+            {safeWorkouts.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No exercises assigned today.</div>
+            ) : (
+              <ul className="divide-y divide-hairline">
+                {safeWorkouts.map((ex) => (
+                  <WorkoutItem
+                    key={ex.id}
+                    ex={ex}
+                    editMode={editMode}
+                    expanded={expandedId === ex.id}
+                    onToggleExpand={() => setExpandedId(expandedId === ex.id ? null : ex.id)}
+                    onToggleDone={() =>
+                      toggleWorkout.mutate({ id: ex.id, is_completed: !ex.is_completed })
+                    }
+                    onDelete={() => deleteWorkout.mutate(ex.id)}
+                    onRename={(name) => renameWorkout.mutate({ id: ex.id, exercise_name: name })}
+                  />
+                ))}
+              </ul>
+            )}
+
+            {editMode && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const name = newExercise.trim();
+                  if (!name) return;
+                  addWorkout.mutate(name, {
+                    onSuccess: () => setNewExercise(""),
+                  });
+                }}
+                className="mt-3 flex items-center gap-2"
+              >
+                <input
+                  value={newExercise}
+                  onChange={(e) => setNewExercise(e.target.value)}
+                  placeholder="Add exercise (e.g. Squat 4x6)"
+                  className="flex-1 rounded-xl border border-hairline bg-surface-2 px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary/60"
+                />
+                <button
+                  type="submit"
+                  disabled={!newExercise.trim() || addWorkout.isPending}
+                  className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-primary-foreground disabled:opacity-50"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add
+                </button>
+              </form>
+            )}
+          </div>
         </MetricCard>
       </div>
+
+      {/* Weekly progression */}
+      <WeeklyProgress />
 
       {/* Commit CTA */}
       <div className="mt-5 mb-6">
@@ -230,6 +278,261 @@ function Dashboard() {
         </p>
       </div>
     </div>
+  );
+}
+
+/* ---------- workout item with inline edit + set logger ---------- */
+
+function WorkoutItem({
+  ex,
+  editMode,
+  expanded,
+  onToggleExpand,
+  onToggleDone,
+  onDelete,
+  onRename,
+}: {
+  ex: Workout;
+  editMode: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onToggleDone: () => void;
+  onDelete: () => void;
+  onRename: (name: string) => void;
+}) {
+  const done = ex.is_completed;
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(ex.exercise_name);
+  const commitRename = () => {
+    const v = name.trim();
+    if (v && v !== ex.exercise_name) onRename(v);
+    setRenaming(false);
+  };
+
+  return (
+    <li>
+      <div className="group flex items-center gap-3 py-3">
+        {!editMode && (
+          <Checkbox
+            checked={done}
+            onCheckedChange={onToggleDone}
+            className="h-5 w-5 rounded-md border-hairline data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+          />
+        )}
+
+        {renaming ? (
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") {
+                setName(ex.exercise_name);
+                setRenaming(false);
+              }
+            }}
+            className="flex-1 rounded-md border border-primary/40 bg-surface-2 px-2 py-1 text-sm font-medium outline-none"
+          />
+        ) : (
+          <button
+            onClick={editMode ? () => setRenaming(true) : onToggleExpand}
+            className={`flex-1 truncate text-left text-sm font-medium transition-all ${
+              done && !editMode ? "text-muted-foreground line-through" : "text-foreground"
+            }`}
+          >
+            {ex.exercise_name}
+          </button>
+        )}
+
+        {editMode ? (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setRenaming(true)}
+              aria-label="Rename"
+              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={onDelete}
+              aria-label="Delete"
+              className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-primary/15 hover:text-primary"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <>
+            {done && (
+              <span className="inline-flex animate-pop-in items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+                Done
+              </span>
+            )}
+            <button
+              onClick={onToggleExpand}
+              aria-label="Log sets"
+              className={`grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-transform hover:text-foreground ${
+                expanded ? "rotate-180 text-primary" : ""
+              }`}
+            >
+              <ChevronDown className="h-4 w-4" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {expanded && !editMode && (
+        <SetLogger workoutId={ex.id} exerciseName={ex.exercise_name} />
+      )}
+    </li>
+  );
+}
+
+function SetLogger({ workoutId, exerciseName }: { workoutId: string; exerciseName: string }) {
+  const addLog = useAddExerciseLog();
+  const [sets, setSets] = useState(3);
+  const [reps, setReps] = useState(10);
+  const [weight, setWeight] = useState(20);
+
+  const submit = () => {
+    addLog.mutate(
+      { workout_id: workoutId, exercise_name: exerciseName, sets, reps, weight_kg: weight },
+      {
+        onSuccess: () =>
+          toast("Logged.", { description: `${sets}×${reps} @ ${weight}kg saved to history.` }),
+        onError: (e: any) => toast("Couldn't log", { description: e?.message ?? "Try again" }),
+      },
+    );
+  };
+
+  return (
+    <div className="mb-3 rounded-xl border border-hairline bg-surface-2/60 p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        <BarChart3 className="h-3 w-3 text-primary" />
+        Log performance
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <NumberBox label="Sets" value={sets} onChange={setSets} step={1} min={0} />
+        <NumberBox label="Reps" value={reps} onChange={setReps} step={1} min={0} />
+        <NumberBox label="kg" value={weight} onChange={setWeight} step={2.5} min={0} />
+      </div>
+      <button
+        onClick={submit}
+        disabled={addLog.isPending}
+        className="mt-3 w-full rounded-lg bg-primary py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-primary-foreground disabled:opacity-50"
+      >
+        {addLog.isPending ? "Saving…" : "Save Set"}
+      </button>
+    </div>
+  );
+}
+
+function NumberBox({
+  label,
+  value,
+  onChange,
+  step,
+  min,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  step: number;
+  min: number;
+}) {
+  return (
+    <div className="rounded-lg border border-hairline bg-surface p-2 text-center">
+      <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-1">
+        <button
+          onClick={() => onChange(Math.max(min, Math.round((value - step) * 100) / 100))}
+          className="grid h-6 w-6 place-items-center rounded-md bg-surface-2 text-muted-foreground hover:text-primary"
+        >
+          <Minus className="h-3 w-3" />
+        </button>
+        <span className="tabular-nums text-sm font-bold">{value}</span>
+        <button
+          onClick={() => onChange(Math.round((value + step) * 100) / 100)}
+          className="grid h-6 w-6 place-items-center rounded-md bg-surface-2 text-muted-foreground hover:text-primary"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WeeklyProgress() {
+  const { data: profile } = useMyProfile();
+  const { data: logs = [] } = useExerciseLogs(profile?.id ?? null, 14);
+  const safe: ExerciseLog[] = logs ?? [];
+
+  // Group by exercise, keep last 7 days by day, show max weight per day
+  const byExercise = useMemo(() => {
+    const m = new Map<string, ExerciseLog[]>();
+    for (const l of safe) {
+      const arr = m.get(l.exercise_name) ?? [];
+      arr.push(l);
+      m.set(l.exercise_name, arr);
+    }
+    return Array.from(m.entries()).slice(0, 4);
+  }, [safe]);
+
+  return (
+    <section className="mt-5 animate-rise rounded-2xl border border-hairline bg-surface p-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+          <LineChart className="h-3.5 w-3.5 text-primary" />
+          Weekly Progression
+        </div>
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          {safe.length} logs · 14d
+        </span>
+      </div>
+
+      {byExercise.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Expand any exercise above and log a set to start tracking your strength curve.
+        </p>
+      ) : (
+        <div className="mt-4 grid gap-4">
+          {byExercise.map(([name, entries]) => {
+            const maxWeight = Math.max(1, ...entries.map((e) => e.weight_kg));
+            const days = entries.slice(0, 7).reverse();
+            return (
+              <div key={name}>
+                <div className="flex items-baseline justify-between">
+                  <div className="truncate text-sm font-semibold">{name}</div>
+                  <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                    peak <span className="font-bold text-primary">{maxWeight}kg</span>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-end gap-1.5 h-16">
+                  {days.map((e) => {
+                    const h = Math.max(6, (e.weight_kg / maxWeight) * 100);
+                    return (
+                      <div
+                        key={e.id}
+                        className="flex-1 rounded-t-sm bg-gradient-to-t from-primary/70 to-primary transition-all"
+                        style={{ height: `${h}%` }}
+                        title={`${e.logged_date}: ${e.sets}×${e.reps} @ ${e.weight_kg}kg`}
+                      />
+                    );
+                  })}
+                  {Array.from({ length: Math.max(0, 7 - days.length) }).map((_, i) => (
+                    <div key={`e${i}`} className="flex-1 rounded-t-sm bg-surface-2" style={{ height: "6%" }} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
