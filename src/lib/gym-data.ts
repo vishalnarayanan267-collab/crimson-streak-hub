@@ -402,6 +402,132 @@ export function useAssignWorkout() {
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["client-workouts", vars.clientId] });
       qc.invalidateQueries({ queryKey: ["admin-clients"] });
+      qc.invalidateQueries({ queryKey: ["workouts"] });
+    },
+  });
+}
+
+/* ---------- workout CRUD (trainee-editable) ---------- */
+
+export function useAddWorkout() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async (exerciseName: string) => {
+      if (!userId) throw new Error("No session");
+      const today = new Date().toISOString().slice(0, 10);
+      const { error } = await sb
+        .from("assigned_workouts")
+        .insert({ client_id: userId, exercise_name: exerciseName, assigned_date: today });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workouts", userId] });
+      qc.invalidateQueries({ queryKey: ["admin-clients"] });
+    },
+  });
+}
+
+export function useDeleteWorkout() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await sb.from("assigned_workouts").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workouts", userId] });
+      qc.invalidateQueries({ queryKey: ["client-workouts"] });
+      qc.invalidateQueries({ queryKey: ["admin-clients"] });
+    },
+  });
+}
+
+export function useRenameWorkout() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async ({ id, exercise_name }: { id: string; exercise_name: string }) => {
+      const { error } = await sb
+        .from("assigned_workouts")
+        .update({ exercise_name })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workouts", userId] });
+      qc.invalidateQueries({ queryKey: ["client-workouts"] });
+    },
+  });
+}
+
+/* ---------- exercise logs (sets/reps/weight history) ---------- */
+
+export function useExerciseLogs(clientId: string | null, days = 14) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!clientId) return;
+    const channel = supabase
+      .channel(`ex-logs-${clientId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "exercise_logs", filter: `client_id=eq.${clientId}` },
+        () => qc.invalidateQueries({ queryKey: ["exercise-logs", clientId] }),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc, clientId]);
+  return useQuery({
+    queryKey: ["exercise-logs", clientId, days],
+    enabled: !!clientId,
+    queryFn: async (): Promise<ExerciseLog[]> => {
+      const since = new Date();
+      since.setDate(since.getDate() - days);
+      const { data, error } = await sb
+        .from("exercise_logs")
+        .select("*")
+        .eq("client_id", clientId)
+        .gte("logged_date", since.toISOString().slice(0, 10))
+        .order("logged_date", { ascending: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as ExerciseLog[];
+    },
+  });
+}
+
+export function useAddExerciseLog() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async (input: {
+      exercise_name: string;
+      sets: number;
+      reps: number;
+      weight_kg: number;
+      workout_id?: string | null;
+      client_id?: string; // admin override
+    }) => {
+      const client_id = input.client_id ?? userId;
+      if (!client_id) throw new Error("No session");
+      const today = new Date().toISOString().slice(0, 10);
+      const { error } = await sb.from("exercise_logs").insert({
+        client_id,
+        workout_id: input.workout_id ?? null,
+        exercise_name: input.exercise_name,
+        sets: input.sets,
+        reps: input.reps,
+        weight_kg: input.weight_kg,
+        logged_date: today,
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      const cid = vars.client_id ?? userId;
+      qc.invalidateQueries({ queryKey: ["exercise-logs", cid] });
     },
   });
 }
