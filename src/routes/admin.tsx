@@ -566,3 +566,63 @@ function WorkoutRow({
     </li>
   );
 }
+
+function AuditFeed() {
+  const { data: logs, isLoading } = useAuditLogs(12);
+  const { data: clients } = useAllClients();
+  const nameFor = (id: string | null) => {
+    if (!id) return "—";
+    const c = (clients ?? []).find((x) => x.profile.id === id);
+    return c?.profile?.full_name?.trim() || "Trainee";
+  };
+  const rel = (iso: string) => {
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return `${Math.round(diff)}s ago`;
+    if (diff < 3600) return `${Math.round(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.round(diff / 3600)}h ago`;
+    return `${Math.round(diff / 86400)}d ago`;
+  };
+  return (
+    <section className="mt-8">
+      <div className="mb-2 flex items-baseline justify-between">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-bold uppercase tracking-[0.24em]">Recent Actions</h2>
+        </div>
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          Live audit log
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-hairline bg-surface">
+        {isLoading ? (
+          <div className="p-4 text-xs text-muted-foreground">Loading…</div>
+        ) : (logs ?? []).length === 0 ? (
+          <div className="p-4 text-xs text-muted-foreground">
+            No admin actions logged yet. Edits and deletions will appear here.
+          </div>
+        ) : (
+          <ul className="divide-y divide-hairline">
+            {(logs ?? []).map((l) => (
+              <li key={l.id} className="flex items-start gap-3 p-3">
+                <span
+                  className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
+                    l.action === "delete_workout" ? "bg-primary" : "bg-emerald-400"
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs text-foreground">
+                    <span className="font-semibold">{nameFor(l.client_id)}</span>
+                    <span className="text-muted-foreground"> · {l.summary}</span>
+                  </div>
+                  <div className="mt-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+                    {rel(l.created_at)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
