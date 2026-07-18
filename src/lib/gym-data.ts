@@ -69,6 +69,15 @@ export type ExerciseLog = {
   created_at: string;
 };
 
+export type AuditLog = {
+  id: string;
+  admin_id: string;
+  client_id: string | null;
+  action: string;
+  summary: string;
+  created_at: string;
+};
+
 /* ---------- session ---------- */
 
 export function useSession() {
