@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Award, Beef, Calendar, Droplets, Flame, Ruler, Scale, Shield, Snowflake, Target, Trophy, User, Zap } from "lucide-react";
-import { GOAL_META, initialsFor, useMyProfile, useMyStats } from "@/lib/gym-data";
+import { useState } from "react";
+import { Award, Beef, Calendar, Droplets, Flame, Lock, Pencil, Ruler, Scale, Shield, Snowflake, Sparkles, Target, Trophy, User, X, Zap } from "lucide-react";
+import { GOAL_META, initialsFor, useMyProfile, useMyStats, useUpdateProfile } from "@/lib/gym-data";
 import { GoalBadge } from "@/components/goal-badge";
+import { EditMetricsDialog } from "@/components/edit-metrics-dialog";
 
 export const Route = createFileRoute("/profile")({
   head: () => ({
@@ -16,17 +18,23 @@ export const Route = createFileRoute("/profile")({
 });
 
 const BADGES = [
-  { id: "b1", label: "7-Day Streak Warrior", icon: Flame, earned: true, desc: "Logged 7 days straight" },
-  { id: "b2", label: "Shield Bearer", icon: Shield, earned: true, desc: "Held an active Freeze" },
-  { id: "b3", label: "Iron Consistency", icon: Zap, earned: true, desc: "20+ day streak" },
-  { id: "b4", label: "Hydration Hero", icon: Snowflake, earned: true, desc: "Hit 3L water · 5 days" },
-  { id: "b5", label: "Century Club", icon: Trophy, earned: false, desc: "Reach a 100-day streak" },
-  { id: "b6", label: "Podium Finish", icon: Award, earned: false, desc: "Top 3 on the leaderboard" },
+const BADGES = [
+  { id: "b1", label: "7-Day Streak Warrior", icon: Flame, earned: true, desc: "Logged 7 days straight", challenge: "Log every daily metric for 7 consecutive days without missing." },
+  { id: "b2", label: "Shield Bearer", icon: Shield, earned: true, desc: "Held an active Freeze", challenge: "Earn and hold an active Streak Shield to protect a missed day." },
+  { id: "b3", label: "Iron Consistency", icon: Zap, earned: true, desc: "20+ day streak", challenge: "Maintain a 20-day active logging streak." },
+  { id: "b4", label: "Hydration Hero", icon: Snowflake, earned: true, desc: "Hit 3L water · 5 days", challenge: "Log water for 5 consecutive days at or above your daily target." },
+  { id: "b5", label: "Century Club", icon: Trophy, earned: false, desc: "Reach a 100-day streak", challenge: "Push your streak to 100 unbroken days." },
+  { id: "b6", label: "Podium Finish", icon: Award, earned: false, desc: "Top 3 on the leaderboard", challenge: "Reach the top 3 by accumulating 120+ consistency points." },
 ];
+
+type Badge = (typeof BADGES)[number];
 
 function Profile() {
   const { data: profile } = useMyProfile();
   const { data: stats } = useMyStats();
+  const update = useUpdateProfile();
+  const [editing, setEditing] = useState(false);
+  const [openBadge, setOpenBadge] = useState<Badge | null>(null);
   const displayName = profile?.full_name?.trim() || "Trainee";
   const initials = initialsFor(displayName);
   const joined = profile
@@ -52,10 +60,23 @@ function Profile() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4 pb-10 lg:px-10 lg:pt-10">
       <div className="animate-rise">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
-          Trainee
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+              Trainee
+            </div>
+            <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">Profile</h1>
+          </div>
+          {profile && (
+            <button
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-primary hover:bg-primary/20"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit Metrics
+            </button>
+          )}
         </div>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">Profile</h1>
       </div>
 
       {/* Identity card */}
@@ -105,9 +126,10 @@ function Profile() {
           {dynamicBadges.map((b) => {
             const Icon = b.icon;
             return (
-              <div
+              <button
                 key={b.id}
-                className={`group relative overflow-hidden rounded-xl border p-4 transition-all ${
+                onClick={() => setOpenBadge(b)}
+                className={`group relative overflow-hidden rounded-xl border p-4 text-left transition-all active:scale-[0.98] ${
                   b.earned
                     ? "border-primary/40 bg-surface hover:-translate-y-0.5 hover:shadow-[var(--shadow-red)]"
                     : "border-hairline bg-surface/40 opacity-55"
@@ -127,7 +149,7 @@ function Profile() {
                     Locked
                   </div>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -155,6 +177,70 @@ function Profile() {
           />
         </div>
       </section>
+
+      {editing && profile && (
+        <EditMetricsDialog
+          profile={profile}
+          onClose={() => setEditing(false)}
+          onSave={async (patch) => {
+            await update.mutateAsync(patch);
+          }}
+          title="Edit My Metrics"
+        />
+      )}
+
+      {openBadge && <BadgePopup badge={openBadge} onClose={() => setOpenBadge(null)} />}
+    </div>
+  );
+}
+
+function BadgePopup({ badge, onClose }: { badge: Badge; onClose: () => void }) {
+  const Icon = badge.icon;
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm overflow-hidden rounded-3xl border border-primary/40 bg-background shadow-[var(--shadow-red)] animate-in zoom-in-95 fade-in duration-300"
+      >
+        <div className="relative p-6 text-center">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-surface text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <div
+            className={`mx-auto grid h-20 w-20 place-items-center rounded-2xl ${
+              badge.earned
+                ? "bg-primary/15 text-primary shadow-[var(--shadow-red)]"
+                : "bg-surface-2 text-muted-foreground"
+            }`}
+          >
+            <Icon className="h-10 w-10" />
+          </div>
+          <div className="mt-4 text-lg font-bold tracking-tight">{badge.label}</div>
+          <div
+            className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+              badge.earned
+                ? "bg-primary/15 text-primary ring-1 ring-inset ring-primary/40"
+                : "bg-surface-2 text-muted-foreground"
+            }`}
+          >
+            {badge.earned ? <Sparkles className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+            {badge.earned ? "Unlocked" : "Locked"}
+          </div>
+          <div className="mt-5 rounded-xl border border-hairline bg-surface p-4 text-left">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Challenge
+            </div>
+            <div className="mt-1 text-sm text-foreground">{badge.challenge}</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
