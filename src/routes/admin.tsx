@@ -1,11 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BarChart3, Beef, ChevronRight, Droplets, Flame, LineChart, Plus, Scale, ShieldCheck, Trash2, Users, X } from "lucide-react";
+import { BarChart3, Beef, ChevronRight, ClipboardList, Droplets, Flame, LineChart, Pencil, Plus, Scale, ShieldCheck, Trash2, Users, X } from "lucide-react";
 import {
   GOAL_META,
   initialsFor,
   useAllClients,
+  useAdminDeleteWorkout,
+  useAdminUpdateProfile,
   useAssignWorkout,
+  useAuditLogs,
   useClientWorkouts,
   useDeleteWorkout,
   useExerciseLogs,
@@ -14,6 +17,8 @@ import {
   type ExerciseLog,
 } from "@/lib/gym-data";
 import { GoalBadge } from "@/components/goal-badge";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { EditMetricsDialog } from "@/components/edit-metrics-dialog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
@@ -63,8 +68,12 @@ function AdminPage() {
 
       <ClientGrid selectedId={selectedId} onSelect={setSelectedId} />
 
+      <AuditFeed />
+
       {selectedId && (
-        <ClientDetailDrawer clientId={selectedId} onClose={() => setSelectedId(null)} />
+        <ErrorBoundary label="Trainee detail failed to render">
+          <ClientDetailDrawer clientId={selectedId} onClose={() => setSelectedId(null)} />
+        </ErrorBoundary>
       )}
     </div>
   );
