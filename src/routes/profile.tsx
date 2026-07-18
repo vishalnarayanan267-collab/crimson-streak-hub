@@ -18,7 +18,6 @@ export const Route = createFileRoute("/profile")({
 });
 
 const BADGES = [
-const BADGES = [
   { id: "b1", label: "7-Day Streak Warrior", icon: Flame, earned: true, desc: "Logged 7 days straight", challenge: "Log every daily metric for 7 consecutive days without missing." },
   { id: "b2", label: "Shield Bearer", icon: Shield, earned: true, desc: "Held an active Freeze", challenge: "Earn and hold an active Streak Shield to protect a missed day." },
   { id: "b3", label: "Iron Consistency", icon: Zap, earned: true, desc: "20+ day streak", challenge: "Maintain a 20-day active logging streak." },
