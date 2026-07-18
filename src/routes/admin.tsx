@@ -332,6 +332,7 @@ function ClientDetailDrawer({
   const { data: logs } = useExerciseLogs(clientId, 14);
   const assign = useAssignWorkout();
   const del = useDeleteWorkout();
+  const adminDel = useAdminDeleteWorkout();
   const [exerciseName, setExerciseName] = useState("");
 
   const submit = async (e: React.FormEvent) => {
@@ -431,7 +432,7 @@ function ClientDetailDrawer({
                     name={w.exercise_name}
                     done={w.is_completed}
                     live
-                    onDelete={() => del.mutate(w.id)}
+                    onDelete={() => adminDel.mutate({ id: w.id, clientId, name: w.exercise_name })}
                   />
                 ))}
               </ul>
