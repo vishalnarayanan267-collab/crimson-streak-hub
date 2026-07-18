@@ -1,11 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BarChart3, Beef, ChevronRight, Droplets, Flame, LineChart, Plus, Scale, ShieldCheck, Trash2, Users, X } from "lucide-react";
+import { BarChart3, Beef, ChevronRight, ClipboardList, Droplets, Flame, LineChart, Pencil, Plus, Scale, ShieldCheck, Trash2, Users, X } from "lucide-react";
 import {
   GOAL_META,
   initialsFor,
   useAllClients,
+  useAdminDeleteWorkout,
+  useAdminUpdateProfile,
   useAssignWorkout,
+  useAuditLogs,
   useClientWorkouts,
   useDeleteWorkout,
   useExerciseLogs,
@@ -14,6 +17,8 @@ import {
   type ExerciseLog,
 } from "@/lib/gym-data";
 import { GoalBadge } from "@/components/goal-badge";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { EditMetricsDialog } from "@/components/edit-metrics-dialog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
@@ -63,8 +68,12 @@ function AdminPage() {
 
       <ClientGrid selectedId={selectedId} onSelect={setSelectedId} />
 
+      <AuditFeed />
+
       {selectedId && (
-        <ClientDetailDrawer clientId={selectedId} onClose={() => setSelectedId(null)} />
+        <ErrorBoundary label="Trainee detail failed to render">
+          <ClientDetailDrawer clientId={selectedId} onClose={() => setSelectedId(null)} />
+        </ErrorBoundary>
       )}
     </div>
   );
@@ -136,11 +145,18 @@ function ClientCard({
   const initials = initialsFor(name);
   const pct = workoutsTotal > 0 ? Math.round((workoutsDone / workoutsTotal) * 100) : 0;
   const sessionRatio = workoutsTotal > 0 ? workoutsDone / workoutsTotal : 0;
+  const [editing, setEditing] = useState(false);
+  const updateProfile = useAdminUpdateProfile();
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`group relative overflow-hidden rounded-2xl border bg-surface p-4 text-left transition-all hover:bg-surface-2 ${
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+      }}
+      className={`group relative overflow-hidden rounded-2xl border bg-surface p-4 text-left transition-all hover:bg-surface-2 cursor-pointer ${
         active ? "border-primary/60 ring-1 ring-primary/40" : "border-hairline"
       }`}
     >
@@ -160,6 +176,14 @@ function ClientCard({
             {profile?.height_cm ? <span>· {profile.height_cm}cm</span> : null}
           </div>
         </div>
+        <button
+          type="button"
+          aria-label="Edit macros"
+          onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+          className="grid h-8 w-8 place-items-center rounded-lg bg-surface-2 text-muted-foreground hover:bg-primary/15 hover:text-primary"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
         <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
       </div>
 
@@ -205,7 +229,43 @@ function ClientCard({
           />
         </div>
       </div>
-    </button>
+
+      {/* Quick-Edit Actions */}
+      <div className="mt-3 flex items-center gap-2 border-t border-hairline pt-3">
+        <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          Quick actions
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+            className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-primary hover:bg-primary/20"
+          >
+            <Pencil className="h-3 w-3" /> Macros
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-foreground hover:bg-primary/10 hover:text-primary"
+          >
+            <ClipboardList className="h-3 w-3" /> Routine
+          </button>
+        </div>
+      </div>
+
+      {editing && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <EditMetricsDialog
+            profile={profile}
+            title={`Edit · ${name}`}
+            onClose={() => setEditing(false)}
+            onSave={async (patch) => {
+              await updateProfile.mutateAsync({ clientId: profile.id, patch });
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -272,6 +332,7 @@ function ClientDetailDrawer({
   const { data: logs } = useExerciseLogs(clientId, 14);
   const assign = useAssignWorkout();
   const del = useDeleteWorkout();
+  const adminDel = useAdminDeleteWorkout();
   const [exerciseName, setExerciseName] = useState("");
 
   const submit = async (e: React.FormEvent) => {
@@ -371,7 +432,7 @@ function ClientDetailDrawer({
                     name={w.exercise_name}
                     done={w.is_completed}
                     live
-                    onDelete={() => del.mutate(w.id)}
+                    onDelete={() => adminDel.mutate({ id: w.id, clientId, name: w.exercise_name })}
                   />
                 ))}
               </ul>
@@ -503,5 +564,65 @@ function WorkoutRow({
         )}
       </div>
     </li>
+  );
+}
+
+function AuditFeed() {
+  const { data: logs, isLoading } = useAuditLogs(12);
+  const { data: clients } = useAllClients();
+  const nameFor = (id: string | null) => {
+    if (!id) return "—";
+    const c = (clients ?? []).find((x) => x.profile.id === id);
+    return c?.profile?.full_name?.trim() || "Trainee";
+  };
+  const rel = (iso: string) => {
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return `${Math.round(diff)}s ago`;
+    if (diff < 3600) return `${Math.round(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.round(diff / 3600)}h ago`;
+    return `${Math.round(diff / 86400)}d ago`;
+  };
+  return (
+    <section className="mt-8">
+      <div className="mb-2 flex items-baseline justify-between">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-bold uppercase tracking-[0.24em]">Recent Actions</h2>
+        </div>
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          Live audit log
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-hairline bg-surface">
+        {isLoading ? (
+          <div className="p-4 text-xs text-muted-foreground">Loading…</div>
+        ) : (logs ?? []).length === 0 ? (
+          <div className="p-4 text-xs text-muted-foreground">
+            No admin actions logged yet. Edits and deletions will appear here.
+          </div>
+        ) : (
+          <ul className="divide-y divide-hairline">
+            {(logs ?? []).map((l) => (
+              <li key={l.id} className="flex items-start gap-3 p-3">
+                <span
+                  className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
+                    l.action === "delete_workout" ? "bg-primary" : "bg-emerald-400"
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs text-foreground">
+                    <span className="font-semibold">{nameFor(l.client_id)}</span>
+                    <span className="text-muted-foreground"> · {l.summary}</span>
+                  </div>
+                  <div className="mt-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+                    {rel(l.created_at)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }

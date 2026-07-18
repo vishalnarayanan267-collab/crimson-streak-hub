@@ -69,6 +69,15 @@ export type ExerciseLog = {
   created_at: string;
 };
 
+export type AuditLog = {
+  id: string;
+  admin_id: string;
+  client_id: string | null;
+  action: string;
+  summary: string;
+  created_at: string;
+};
+
 /* ---------- session ---------- */
 
 export function useSession() {
@@ -399,10 +408,128 @@ export function useAssignWorkout() {
         .insert({ client_id: clientId, exercise_name: exerciseName, assigned_date: today });
       if (error) throw error;
     },
-    onSuccess: (_d, vars) => {
+    onMutate: async ({ clientId, exerciseName }) => {
+      await qc.cancelQueries({ queryKey: ["client-workouts", clientId] });
+      const key = ["client-workouts", clientId];
+      const prev = qc.getQueryData<Workout[]>(key);
+      const today = new Date().toISOString().slice(0, 10);
+      const optimistic: Workout = {
+        id: `optimistic-${Date.now()}`,
+        client_id: clientId,
+        exercise_name: exerciseName,
+        is_completed: false,
+        assigned_date: today,
+      };
+      qc.setQueryData<Workout[]>(key, (old) => [optimistic, ...(old ?? [])]);
+      return { prev, key };
+    },
+    onError: (_e, _v, ctx: any) => {
+      if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev);
+    },
+    onSettled: (_d, _e, vars) => {
       qc.invalidateQueries({ queryKey: ["client-workouts", vars.clientId] });
       qc.invalidateQueries({ queryKey: ["admin-clients"] });
       qc.invalidateQueries({ queryKey: ["workouts"] });
+    },
+  });
+}
+
+/* ---------- admin: update trainee macros + audit logs ---------- */
+
+export function useAdminUpdateProfile() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async ({ clientId, patch }: { clientId: string; patch: Partial<Profile> }) => {
+      const { error } = await sb.from("profiles").update(patch).eq("id", clientId);
+      if (error) throw error;
+      if (userId) {
+        const parts = Object.entries(patch).map(([k, v]) => `${k}=${v}`).join(", ");
+        await sb.from("admin_audit_logs").insert({
+          admin_id: userId,
+          client_id: clientId,
+          action: "update_metrics",
+          summary: `Updated metrics: ${parts}`,
+        });
+      }
+    },
+    onMutate: async ({ clientId, patch }) => {
+      await qc.cancelQueries({ queryKey: ["admin-clients"] });
+      const prev = qc.getQueryData<any[]>(["admin-clients"]);
+      qc.setQueryData<any[]>(["admin-clients"], (old) =>
+        (old ?? []).map((c) =>
+          c.profile.id === clientId ? { ...c, profile: { ...c.profile, ...patch } } : c,
+        ),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx: any) => {
+      if (ctx?.prev) qc.setQueryData(["admin-clients"], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["admin-clients"] });
+      qc.invalidateQueries({ queryKey: ["audit-logs"] });
+    },
+  });
+}
+
+export function useAdminDeleteWorkout() {
+  const qc = useQueryClient();
+  const { userId } = useSession();
+  return useMutation({
+    mutationFn: async ({ id, clientId, name }: { id: string; clientId: string; name: string }) => {
+      const { error } = await sb.from("assigned_workouts").delete().eq("id", id);
+      if (error) throw error;
+      if (userId) {
+        await sb.from("admin_audit_logs").insert({
+          admin_id: userId,
+          client_id: clientId,
+          action: "delete_workout",
+          summary: `Removed workout "${name}"`,
+        });
+      }
+    },
+    onMutate: async ({ id, clientId }) => {
+      const key = ["client-workouts", clientId];
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<Workout[]>(key);
+      qc.setQueryData<Workout[]>(key, (old) => (old ?? []).filter((w) => w.id !== id));
+      return { prev, key };
+    },
+    onError: (_e, _v, ctx: any) => {
+      if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev);
+    },
+    onSettled: (_d, _e, vars) => {
+      qc.invalidateQueries({ queryKey: ["client-workouts", vars.clientId] });
+      qc.invalidateQueries({ queryKey: ["admin-clients"] });
+      qc.invalidateQueries({ queryKey: ["audit-logs"] });
+    },
+  });
+}
+
+export function useAuditLogs(limit = 15) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const channel = supabase
+      .channel("audit-logs-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "admin_audit_logs" }, () => {
+        qc.invalidateQueries({ queryKey: ["audit-logs"] });
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc]);
+  return useQuery({
+    queryKey: ["audit-logs", limit],
+    queryFn: async (): Promise<AuditLog[]> => {
+      const { data, error } = await sb
+        .from("admin_audit_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as AuditLog[];
     },
   });
 }
