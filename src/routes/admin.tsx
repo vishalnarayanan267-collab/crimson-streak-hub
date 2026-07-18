@@ -145,11 +145,18 @@ function ClientCard({
   const initials = initialsFor(name);
   const pct = workoutsTotal > 0 ? Math.round((workoutsDone / workoutsTotal) * 100) : 0;
   const sessionRatio = workoutsTotal > 0 ? workoutsDone / workoutsTotal : 0;
+  const [editing, setEditing] = useState(false);
+  const updateProfile = useAdminUpdateProfile();
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`group relative overflow-hidden rounded-2xl border bg-surface p-4 text-left transition-all hover:bg-surface-2 ${
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+      }}
+      className={`group relative overflow-hidden rounded-2xl border bg-surface p-4 text-left transition-all hover:bg-surface-2 cursor-pointer ${
         active ? "border-primary/60 ring-1 ring-primary/40" : "border-hairline"
       }`}
     >
@@ -169,6 +176,14 @@ function ClientCard({
             {profile?.height_cm ? <span>· {profile.height_cm}cm</span> : null}
           </div>
         </div>
+        <button
+          type="button"
+          aria-label="Edit macros"
+          onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+          className="grid h-8 w-8 place-items-center rounded-lg bg-surface-2 text-muted-foreground hover:bg-primary/15 hover:text-primary"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
         <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
       </div>
 
@@ -214,7 +229,43 @@ function ClientCard({
           />
         </div>
       </div>
-    </button>
+
+      {/* Quick-Edit Actions */}
+      <div className="mt-3 flex items-center gap-2 border-t border-hairline pt-3">
+        <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          Quick actions
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+            className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-primary hover:bg-primary/20"
+          >
+            <Pencil className="h-3 w-3" /> Macros
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-foreground hover:bg-primary/10 hover:text-primary"
+          >
+            <ClipboardList className="h-3 w-3" /> Routine
+          </button>
+        </div>
+      </div>
+
+      {editing && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <EditMetricsDialog
+            profile={profile}
+            title={`Edit · ${name}`}
+            onClose={() => setEditing(false)}
+            onSave={async (patch) => {
+              await updateProfile.mutateAsync({ clientId: profile.id, patch });
+            }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
