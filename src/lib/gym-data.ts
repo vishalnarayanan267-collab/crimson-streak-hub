@@ -153,7 +153,7 @@ export function useLeaderboard() {
   const qc = useQueryClient();
   useEffect(() => {
     const channel = supabase
-      .channel("leaderboard-realtime")
+      .channel(`leaderboard-realtime-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "leaderboard_stats" }, () => {
         qc.invalidateQueries({ queryKey: ["leaderboard"] });
       })
@@ -310,7 +310,7 @@ export function useAllClients() {
   const qc = useQueryClient();
   useEffect(() => {
     const channel = supabase
-      .channel("admin-clients-realtime")
+      .channel(`admin-clients-realtime-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
         qc.invalidateQueries({ queryKey: ["admin-clients"] });
       })
@@ -371,7 +371,7 @@ export function useClientWorkouts(clientId: string | null) {
   useEffect(() => {
     if (!clientId) return;
     const channel = supabase
-      .channel(`client-workouts-${clientId}`)
+      .channel(`client-workouts-${clientId}-${Math.random().toString(36).slice(2)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "assigned_workouts", filter: `client_id=eq.${clientId}` },
@@ -511,7 +511,7 @@ export function useAuditLogs(limit = 15) {
   const qc = useQueryClient();
   useEffect(() => {
     const channel = supabase
-      .channel("audit-logs-realtime")
+      .channel(`audit-logs-realtime-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "admin_audit_logs" }, () => {
         qc.invalidateQueries({ queryKey: ["audit-logs"] });
       })
@@ -596,7 +596,7 @@ export function useExerciseLogs(clientId: string | null, days = 14) {
   useEffect(() => {
     if (!clientId) return;
     const channel = supabase
-      .channel(`ex-logs-${clientId}`)
+      .channel(`ex-logs-${clientId}-${Math.random().toString(36).slice(2)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "exercise_logs", filter: `client_id=eq.${clientId}` },
